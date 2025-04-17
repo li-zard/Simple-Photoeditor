@@ -24,34 +24,34 @@ def load_config():
     config = configparser.ConfigParser()
     # Сначала пытаемся загрузить из пользовательской директории
     user_config_path = get_user_config_path()
-    print(f"User config path: {user_config_path}")  # Отладка
+    #print(f"User config path: {user_config_path}")  # Отладка
     if os.path.exists(user_config_path):
-        print("Loading user config...")  # Отладка
+        #print("Loading user config...")  # Отладка
         config.read(user_config_path)
     else:
         # Если пользовательского файла нет, пытаемся загрузить из ресурсов
         default_config_path = resource_path("config.ini")
-        print(f"Default config path: {default_config_path}")  # Отладка
+        #print(f"Default config path: {default_config_path}")  # Отладка
         if os.path.exists(default_config_path):
-            print("Loading default config...")  # Отладка
+            #print("Loading default config...")  # Отладка
             config.read(default_config_path)
 
         # Добавляем секции, если их нет
         if 'General' not in config:
-            print("Adding default General section...")  # Отладка
+            #print("Adding default General section...")  # Отладка
             config['General'] = {
                 'theme': 'dark',
                 'window_width': '800',
                 'window_height': '600'
             }
         if 'Editor' not in config:
-            print("Adding default Editor section...")  # Отладка
+            #print("Adding default Editor section...")  # Отладка
             config['Editor'] = {
                 'default_zoom': '1.0',
                 'show_rulers': 'true'
             }
         if 'RecentFiles' not in config:
-            print("Adding default RecentFiles section...")  # Отладка
+            #print("Adding default RecentFiles section...")  # Отладка
             config['RecentFiles'] = {}
         # Сохраняем в пользовательскую директорию
         save_config(config)
@@ -60,7 +60,7 @@ def load_config():
 def save_config(config):
     """Сохранить настройки в config.ini в пользовательской директории"""
     config_path = get_user_config_path()  # Используем ту же директорию, что и в load_config
-    print(f"Saving config to: {config_path}")  # Отладка
+    #print(f"Saving config to: {config_path}")  # Отладка
     try:
         with open(config_path, 'w') as configfile:
             config.write(configfile)

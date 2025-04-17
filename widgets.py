@@ -24,26 +24,26 @@ class RulerWidget(QWidget):
 
         painter = QPainter(self)
         viewport_rect = self.editor.viewport().rect()
-        # Получаем видимую область сцены в координатах сцены
+        # Get visible scene area in scene coordinates
         top_left = self.editor.mapToScene(viewport_rect.topLeft())
         bottom_right = self.editor.mapToScene(viewport_rect.bottomRight())
         visible_scene_rect = QRectF(top_left, bottom_right)
 
-        # Учитываем текущий масштаб
+        # Scale
         zoom_factor = self.editor.zoom_factor
         if zoom_factor == 0:
-            zoom_factor = 1.0  # Избегаем деления на ноль
+            zoom_factor = 1.0  # Escape divide by zero
 
-        # Вычисляем шаг штрихов в пикселях сцены
-        target_tick_spacing_pixels = 50  # Целевой шаг в пикселях viewport
-        tick_spacing = target_tick_spacing_pixels / zoom_factor  # Шаг в координатах сцены
+        # Calculate step of strips in Scenes pixels
+        target_tick_spacing_pixels = 50  # Destination step in pix of viewport
+        tick_spacing = target_tick_spacing_pixels / zoom_factor  # Step in coordinate of Scene
         tick_spacing = self.editor.adjustTickSpacing(tick_spacing)
 
-       # Начинаем с ближайшей к началу видимой области метки, но не меньше 0
+       #Start from closest to start visible area point, but >=0
         start_x = max(0, int(visible_scene_rect.left() // tick_spacing) * tick_spacing)
         start_y = max(0, int(visible_scene_rect.top() // tick_spacing) * tick_spacing)
 
-        # Рисуем фон линейки
+        # Draw ruller background
         painter.setPen(Qt.NoPen)
         painter.setBrush(self.ruler_color)
         painter.drawRect(self.rect())
@@ -52,7 +52,7 @@ class RulerWidget(QWidget):
         painter.setFont(QFont("Arial", 8))
         fm = QFontMetrics(painter.font())
 
-        # Рисуем горизонтальную линейку (верхняя линейка)
+        # Draw horizontal ruler
         if self.orientation == "horizontal":
             x = start_x
             while x <= self.editor.current_image.width():
@@ -72,7 +72,7 @@ class RulerWidget(QWidget):
                                 painter.drawLine(minor_viewport_x, self.ruler_width - 5, minor_viewport_x, self.ruler_width)
                 x += tick_spacing
 
-            # Рисуем отметку курсора
+            # Draw cursor strip
             if self.editor.cursor_pos.x() >= 0:
                 cursor_x = self.editor.cursor_pos.x()
                 if visible_scene_rect.left() <= cursor_x <= visible_scene_rect.right():
@@ -81,7 +81,7 @@ class RulerWidget(QWidget):
                         painter.setPen(QPen(Qt.red, 2))
                         painter.drawLine(viewport_cursor_x, 0, viewport_cursor_x, self.ruler_width)
 
-        # Рисуем вертикальную линейку (левая линейка)
+        # Draw vertical rule
         if self.orientation == "vertical":
             y = start_y
             while y <= self.editor.current_image.height():
@@ -105,7 +105,7 @@ class RulerWidget(QWidget):
                                 painter.drawLine(self.ruler_width - 5, minor_viewport_y, self.ruler_width, minor_viewport_y)
                 y += tick_spacing
 
-            # Рисуем отметку курсора
+            # Draw cursor strip 
             if self.editor.cursor_pos.y() >= 0:
                 cursor_y = self.editor.cursor_pos.y()
                 if visible_scene_rect.top() <= cursor_y <= visible_scene_rect.bottom():
@@ -310,21 +310,21 @@ class ResizeDialog(QDialog):
         self.height_label = QLabel("Height:", self)
         self.height_edit = QLineEdit(str(current_height), self)
         self.percent_label = QLabel("Percent:", self)
-        self.percent_edit = QLineEdit("100", self)  # 100% по умолчанию
+        self.percent_edit = QLineEdit("100", self)  # 100% by default
         self.aspect_ratio_checkbox = QCheckBox("Keep Aspect Ratio", self)
-        self.aspect_ratio_checkbox.setChecked(True)  # Включено по умолчанию
+        self.aspect_ratio_checkbox.setChecked(True)  # Default On
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
 
-        # Подключаем сигналы для динамического обновления
+        # Connect signals for dynamic update
         self.width_edit.textEdited.connect(self.updateAspectRatio)
         self.height_edit.textEdited.connect(self.updateAspectRatio)
         self.percent_edit.textEdited.connect(self.updateFromPercent)
         self.aspect_ratio_checkbox.stateChanged.connect(self.updateAspectRatio)
 
-        # Размещаем элементы в сетке
+        # Put element in grid
         self.layout.addWidget(self.width_label, 0, 0)
         self.layout.addWidget(self.width_edit, 0, 1)
         self.layout.addWidget(self.height_label, 1, 0)
@@ -334,13 +334,13 @@ class ResizeDialog(QDialog):
         self.layout.addWidget(self.aspect_ratio_checkbox, 3, 0, 1, 2)
         self.layout.addWidget(self.buttons, 4, 0, 1, 2)
 
-        # Инициализируем соотношение сторон
+        # Init ratio
         self.aspect_ratio = current_width / current_height if current_height != 0 else 1
 
     def updateAspectRatio(self, *args):
         """Update height or width based on aspect ratio."""
         if not self.aspect_ratio_checkbox.isChecked():
-            self.updatePercent()  # Обновляем процент, если пропорции не сохраняются
+            self.updatePercent()  # Update % if don't keep ratio 
             return
 
         try:
@@ -354,13 +354,13 @@ class ResizeDialog(QDialog):
                 width = int(height * self.aspect_ratio)
                 self.width_edit.setText(str(width))
             elif sender == self.percent_edit:
-                # Если процент изменился, обновляем ширину и высоту
+                # If % changed, lets update width & heigh
                 percent = float(self.percent_edit.text()) / 100
                 width = int(self.current_width * percent)
                 height = int(self.current_height * percent)
                 self.width_edit.setText(str(width))
                 self.height_edit.setText(str(height))
-            self.updatePercent()  # Обновляем процент после изменения
+            self.updatePercent()  # Update % after changed
         except (ValueError, ZeroDivisionError):
             pass
 

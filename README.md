@@ -1,6 +1,6 @@
 # Simple Photoeditor
 
-Simple Photoeditor is an open-source Python-based multiplatform image editing tool inspired by the classic Microsoft Photoeditor. While the original software is no longer supported and has several limitations, it offered a user-friendly and minimalistic interface for document scanning and processing. Simple Photoeditor aims to recreate that experience with modern functionality, allowing users to create, edit, and process images efficiently.
+Simple Photoeditor is an open-source Python-based multi platform image editing tool inspired by the classic Microsoft Photoeditor. While the original software is no longer supported and has several limitations, it offered a user-friendly and minimalistic interface for document scanning and processing. Simple Photoeditor aims to recreate that experience with modern functionality, allowing users to create, edit, and process images efficiently.
 
 ## Features
 
@@ -41,6 +41,11 @@ Simple Photoeditor is an open-source Python-based multiplatform image editing to
 
 For a full list of dependencies, see `requirements.txt`.
 
+
+## Download
+
+Last Relese [v1.0] (https://github.com/li-zard/Simple-Photoeditor/releases/tag/%23)
+    - Windows: (https://github.com/li-zard/Simple-Photoeditor/releases/download/%23/SimplePhotoEditor_v1.0.exe)
 ## Usage
 
 1. Run the application:
