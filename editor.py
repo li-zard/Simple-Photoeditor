@@ -5,7 +5,6 @@ from PyQt5.QtGui import QImage, QPixmap, QPainter, QTransform
 from PyQt5.QtCore import Qt, QSizeF, QRectF, QPointF
 from PIL import Image, ImageEnhance
 
-# Импорты из других модулей проекта (добавь их, когда создашь модули)
 
 #from commands import FixPasteCommand, CropCommand, TransformCommand, GrayscaleCommand, CutCommand, PasteCommand, ResizeCommand
 #from widgets import RulerWidget
@@ -21,7 +20,7 @@ class ImageEditor(QGraphicsView):
     def __init__(self, parent=None):
         """Initialize the image editor."""
         super().__init__(parent)
-        from scene import ImageEditorScene  # Локальный импорт
+        from scene import ImageEditorScene  # Local import
         self.scene = ImageEditorScene(self)
         self.setScene(self.scene)
         self.image_item = None
@@ -76,7 +75,7 @@ class ImageEditor(QGraphicsView):
             self.scene.addItem(self.image_item)
         self.image_item.setPixmap(QPixmap.fromImage(self.current_image))
         self.scene.setSceneRect(0, 0, image.width(), image.height())
-        self.image_item.setPos(0, 0)  # Всегда устанавливаем в (0, 0)
+        self.image_item.setPos(0, 0)  # Always set to (0, 0)
         self.zoom_factor = 1.0
         self.is_modified = False
         self.fitInViewWithRulers()
@@ -144,14 +143,14 @@ class ImageEditor(QGraphicsView):
             return
         rect = self.scene.sceneRect()
         self.resetTransform()
-        # Учитываем линейки, если они видны
+        #Rullers, if they visible
         view_rect = self.viewport().rect()
         if self.rulers_visible:
             view_rect.adjust(self.ruler_width, self.ruler_width, -self.ruler_width, -self.ruler_width)
         self.fitInView(rect, Qt.KeepAspectRatio)
-        # Обновляем zoom_factor на основе текущего масштаба
+        #  zoom_factor from scale
         transform = self.transform()
-        self.zoom_factor = transform.m11()  # Масштаб по оси X (так как пропорции сохраняются, m11 == m22)
+        self.zoom_factor = transform.m11()  # Scale by X (If Keep aspect ratio then m11 == m22)
         self.scene.update()
         self.viewport().update()
     
@@ -163,25 +162,25 @@ class ImageEditor(QGraphicsView):
 
 
     def undo(self):
-        """Отменить последнюю операцию"""
+        """Undo last operation"""
         if not self.undo_stack:
             return
         command = self.undo_stack.pop()
         self.redo_stack.append(command)
         command.undo()
-        self.is_modified = bool(self.undo_stack)  # Обновляем флаг изменений
+        self.is_modified = bool(self.undo_stack)  # Update flag of changes
         self.scene.update()
         self.viewport().update()
         self.window().statusBar().showMessage("Undo performed", 2000)
 
     def redo(self):
-        """Повторить отменённую операцию"""
+        """Redo undone operation"""
         if not self.redo_stack:
             return
         command = self.redo_stack.pop()
         self.undo_stack.append(command)
         command.redo()
-        self.is_modified = True  # После redo всегда есть изменения
+        self.is_modified = True  # After redo always chsnges there
         self.scene.update()
         self.viewport().update()
         self.window().statusBar().showMessage("Redo performed", 2000)
@@ -288,18 +287,18 @@ class ImageEditor(QGraphicsView):
         """Flip the image horizontally or vertically."""
         if not self.current_image:
             return
-        from commands import TransformCommand  # Локальный импорт
+        from commands import TransformCommand  # Local import
         command = TransformCommand(self, horizontal_flip=horizontal)
         self.executeCommand(command)
     '''
     def resizeImage(self, new_width, new_height):
-        """Изменить размер текущего изображения"""
+        """Change size of image"""
         if not self.current_image:
             return
-        # Сохраняем текущее изображение для Undo
+        # Save image for Undo
         old_image = self.current_image.copy()
 
-        # Создаём новое изображение с новыми размерами
+        # Create new image with nrew size
         resized_image = self.current_image.scaled(new_width, new_height, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
         # Если размеры не совпадают (из-за сохранения пропорций), обрезаем изображение
         if resized_image.width() != new_width or resized_image.height() != new_height:
