@@ -405,7 +405,7 @@ class RotationDialog(QDialog):
         angle_layout = QHBoxLayout()
         angle_label = QLabel("Angle:", self)
         self.angle_spinbox = QSpinBox(self)
-        self.angle_spinbox.setRange(0, 359)
+        self.angle_spinbox.setRange(-180, 180)
         self.angle_spinbox.setValue(0)
         self.angle_spinbox.valueChanged.connect(self.update_slider_from_spinbox)
         angle_layout.addWidget(angle_label)
@@ -414,7 +414,7 @@ class RotationDialog(QDialog):
 
         # Slider
         self.angle_slider = QSlider(Qt.Horizontal, self)
-        self.angle_slider.setRange(0, 359)
+        self.angle_slider.setRange(-180, 180)
         self.angle_slider.setValue(0)
         self.angle_slider.valueChanged.connect(self.update_spinbox_from_slider)
         self.angle_slider.sliderMoved.connect(self.live_preview_rotation)
