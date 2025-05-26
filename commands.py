@@ -137,11 +137,15 @@ class AdjustmentsCommand(Command):
         self.editor.setImage(self.original_image)
 
 class TransformCommand(Command):
-    def __init__(self, editor, degrees=None, horizontal_flip=None):
+    def __init__(self, editor, degrees=None, horizontal_flip=None, original_image_override=None):
         self.editor = editor
         self.degrees = degrees
         self.horizontal_flip = horizontal_flip
-        self.original_image = editor.getCurrentImage().copy()
+        self.original_image_override = original_image_override
+        if self.original_image_override:
+            self.original_image = self.original_image_override
+        else:
+            self.original_image = editor.getCurrentImage().copy()
         self.transformed_image = None
 
     def execute(self):
@@ -149,7 +153,8 @@ class TransformCommand(Command):
         image = self.original_image.copy()
         if self.degrees is not None:
             transform = QTransform().rotate(self.degrees)
-            image = image.transformed(transform)
+            # Ensure smooth transformation for rotations
+            image = image.transformed(transform, Qt.SmoothTransformation)
         elif self.horizontal_flip is not None:
             image = image.mirrored(self.horizontal_flip, not self.horizontal_flip)
         self.transformed_image = image
@@ -159,7 +164,7 @@ class TransformCommand(Command):
         """Restore the original image."""
         self.editor.setImage(self.original_image)
     def redo(self):
-        self.execute() 
+        self.execute()
 
 
 class GrayscaleCommand(Command):

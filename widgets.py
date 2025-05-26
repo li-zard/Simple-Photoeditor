@@ -1,6 +1,6 @@
 from PyQt5.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
-    QLineEdit, QPushButton, QSlider, QMdiSubWindow, QDialogButtonBox, QCheckBox, QMessageBox
+    QLineEdit, QPushButton, QSlider, QMdiSubWindow, QDialogButtonBox, QCheckBox, QMessageBox, QSpinBox
 )
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QFontMetrics
 from PyQt5.QtCore import Qt, QSize, QRectF
@@ -390,3 +390,56 @@ class ResizeDialog(QDialog):
         height = int(self.height_edit.text())
         keep_aspect = self.aspect_ratio_checkbox.isChecked()
         return width, height, keep_aspect
+
+
+class RotationDialog(QDialog):
+    def __init__(self, editor, parent=None):
+        super().__init__(parent)
+        self.editor = editor
+        self.setWindowTitle("Precise Rotation")
+        self.editor.start_preview()
+
+        main_layout = QVBoxLayout(self)
+
+        # Angle Display
+        angle_layout = QHBoxLayout()
+        angle_label = QLabel("Angle:", self)
+        self.angle_spinbox = QSpinBox(self)
+        self.angle_spinbox.setRange(0, 359)
+        self.angle_spinbox.setValue(0)
+        self.angle_spinbox.valueChanged.connect(self.update_slider_from_spinbox)
+        angle_layout.addWidget(angle_label)
+        angle_layout.addWidget(self.angle_spinbox)
+        main_layout.addLayout(angle_layout)
+
+        # Slider
+        self.angle_slider = QSlider(Qt.Horizontal, self)
+        self.angle_slider.setRange(0, 359)
+        self.angle_slider.setValue(0)
+        self.angle_slider.valueChanged.connect(self.update_spinbox_from_slider)
+        self.angle_slider.sliderMoved.connect(self.live_preview_rotation)
+        main_layout.addWidget(self.angle_slider)
+
+        # Buttons
+        self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject_dialog)
+        main_layout.addWidget(self.buttons)
+
+        self.setLayout(main_layout)
+
+    def update_slider_from_spinbox(self, value):
+        self.angle_slider.setValue(value)
+
+    def update_spinbox_from_slider(self, value):
+        self.angle_spinbox.setValue(value)
+
+    def live_preview_rotation(self, angle):
+        self.editor.preview_rotation(angle)
+
+    def get_angle(self):
+        return self.angle_spinbox.value()
+
+    def reject_dialog(self):
+        self.editor.cancel_preview()
+        self.reject()

@@ -2,13 +2,13 @@ import sys
 import os
 from PyQt5.QtWidgets import (
     QMainWindow, QAction, QFileDialog, QDialog, QMenu, QMdiArea, QMessageBox,
-    QApplication, QStatusBar, QGraphicsView, QCheckBox
+    QApplication, QStatusBar, QGraphicsView, QCheckBox, QInputDialog
 )
 from PyQt5.QtGui import QIcon, QPixmap, QImage, QPen
 from PyQt5.QtCore import Qt, QRectF, QTimer
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from editor import ImageEditor, EditorContainer
-from widgets import CustomMdiSubWindow, NewImageDialog, AdjustmentsDialog, ResizeDialog
+from widgets import CustomMdiSubWindow, NewImageDialog, AdjustmentsDialog, ResizeDialog, RotationDialog
 from commands import CropCommand
 from utils import load_config, save_config, get_recent_files, add_recent_file
 
@@ -183,6 +183,10 @@ class MainWindow(QMainWindow):
         self.rotate_180_act.setIcon(QIcon(resource_path("icons/rotate_cw.png")))  # Если нет, можно использовать rotate_cw.png
         self.rotate_180_act.setToolTip("Rotate 180°")
 
+        self.precise_rotate_act = QAction("Rotate...", self, triggered=self.openPreciseRotationDialog)
+        self.precise_rotate_act.setIcon(QIcon(resource_path("icons/rotate_cw.png")))
+        self.precise_rotate_act.setToolTip("Precise Rotation")
+
         self.flip_horizontal_act = QAction("Flip &Horizontal", self, triggered=lambda: self.flipImage(True))
         self.flip_horizontal_act.setIcon(QIcon(resource_path("icons/flip.png")))
         self.flip_horizontal_act.setToolTip("Flip Horizontal")
@@ -276,6 +280,8 @@ class MainWindow(QMainWindow):
         rotate_menu.addAction(self.rotate_90_cw_act)
         rotate_menu.addAction(self.rotate_90_ccw_act)
         rotate_menu.addAction(self.rotate_180_act)
+        rotate_menu.addSeparator() # Optional separator
+        rotate_menu.addAction(self.precise_rotate_act)
         image_menu.addAction(self.crop_act)
         image_menu.addAction(self.resizeAct)
         
@@ -595,6 +601,10 @@ class MainWindow(QMainWindow):
     
     def scanImage(self):
         """Scan an image using WIA with DPI selection"""
+        if not WIA_AVAILABLE:
+            QMessageBox.warning(self, "Scanning Not Available", "WIA components are not installed. Scanning is not available.")
+            return
+
         from win32com.client import Dispatch
         import pythoncom
         from io import BytesIO
@@ -608,7 +618,7 @@ class MainWindow(QMainWindow):
                 return
 
             # Диалог для выбора DPI
-            dpi, ok = QInputDialog.getInt(self, "Scan Settings", "Enter DPI (e.g., 150, 300, 600):", 
+            dpi, ok = QInputDialog.getInt(self, "Scan Settings", "Enter DPI (e.g., 150, 300, 600):",
                                            150, 75, 1200, 75)  # Мин: 75, Макс: 1200, Шаг: 75
             if not ok:
                 return  # Пользователь отменил
@@ -627,26 +637,48 @@ class MainWindow(QMainWindow):
             item.Properties("6146").Value = 1  # Цветной режим
 
             # Выполняем сканирование
-            image = item.Transfer()
-            binary_data = image.FileData.BinaryData
-            image_stream = BytesIO(binary_data)
-            pixmap = QPixmap()
-            pixmap.loadFromData(image_stream.getvalue())
+            image_file = item.Transfer() # WIA.ImageFile object
+            binary_data = image_file.FileData.BinaryData # This is a bytes object
+            
+            # Create QImage from binary data
+            qimage = QImage()
+            qimage.loadFromData(binary_data)
+
+
+            if qimage.isNull():
+                QMessageBox.critical(self, "Error", "Failed to load scanned image data.")
+                return
 
             # Создаем новый редактор
-            editor = ImageEditor()
-            editor.setImage(pixmap.toImage())
-            sub_window = CustomMdiSubWindow(self)
-            sub_window.setWidget(editor)
+            sub_window = CustomMdiSubWindow(self) # Pass self as main_window
+            sub_window.editor_container.editor.setImage(qimage)
             self.mdi_area.addSubWindow(sub_window)
             sub_window.setWindowTitle(f"Scanned Image ({dpi} DPI)")
             sub_window.file_path = None
             sub_window.show()
+            # Ensure the image is fitted after showing
+            QTimer.singleShot(100, sub_window.editor_container.editor.fitInViewWithRulers)
+
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Scanning failed: {str(e)}")
         finally:
-            pythoncom.CoUninitialize()  # Очистка COM              
+            pythoncom.CoUninitialize()  # Очистка COM
+
+    def openPreciseRotationDialog(self):
+        editor = self.currentEditor()
+        if not editor or not editor.getCurrentImage():
+            self.statusBar().showMessage("No active image to rotate.", 2000)
+            return
+
+        dialog = RotationDialog(editor, self) # Pass editor and parent
+        if dialog.exec_() == QDialog.Accepted:
+            angle = dialog.get_angle()
+            editor.apply_rotation(angle) # Use the new method in ImageEditor
+            self.statusBar().showMessage(f"Image rotated by {angle} degrees.", 2000)
+        else:
+            self.statusBar().showMessage("Rotation cancelled.", 2000)
+
     def undo(self):
         """Undo the last operation"""
         editor = self.currentEditor()

@@ -44,6 +44,7 @@ class ImageEditor(QGraphicsView):
         self.redo_stack = []
         self.ruler_width = 30
         self.cursor_pos = QPointF(-1, -1)
+        self.image_before_preview = None
 
     def adjustTickSpacing(self, spacing):
         """Adjust tick spacing to a convenient number."""
@@ -277,11 +278,13 @@ class ImageEditor(QGraphicsView):
 
     def rotateImage(self, degrees):
         """Rotate the image by specified degrees."""
-        if not self.current_image:
-            return
+        if not self.current_image: return
         from commands import TransformCommand
-        command = TransformCommand(self, degrees=degrees)
+        # For direct rotations, the 'original' for the command is always a fresh copy of the current state.
+        command = TransformCommand(self, degrees=degrees, original_image_override=self.current_image.copy())
         self.executeCommand(command)
+        # Ensure preview state is cleared if any was inadvertently active
+        self.image_before_preview = None
 
     def flipImage(self, horizontal=True):
         """Flip the image horizontally or vertically."""
@@ -403,6 +406,40 @@ class ImageEditor(QGraphicsView):
                 
                 command = PasteCommand(self, clipboard_image)
                 self.executeCommand(command)
+
+    def start_preview(self):
+        self.image_before_preview = self.current_image.copy() if self.current_image else None
+
+    def preview_rotation(self, angle):
+        if self.image_before_preview and self.image_item:
+            transform = QTransform().rotate(angle)
+            preview_image = self.image_before_preview.transformed(transform, Qt.SmoothTransformation)
+            self.current_image = preview_image
+            self.image_item.setPixmap(QPixmap.fromImage(self.current_image))
+            self.scene.setSceneRect(0, 0, self.current_image.width(), self.current_image.height())
+            self.image_item.setPos(0, 0)
+            self.scene.update()
+            self.viewport().update()
+
+    def cancel_preview(self):
+        if self.image_before_preview and self.image_item:
+            self.current_image = self.image_before_preview.copy() # Restore from the saved state
+            self.image_item.setPixmap(QPixmap.fromImage(self.current_image))
+            self.scene.setSceneRect(0, 0, self.current_image.width(), self.current_image.height())
+            self.image_item.setPos(0, 0)
+            self.scene.update()
+            self.viewport().update()
+        self.image_before_preview = None # Clear the saved state
+
+    def apply_rotation(self, degrees):
+        if not self.current_image: return
+        from commands import TransformCommand
+        # Use image_before_preview if available (meaning dialog was used),
+        # otherwise, current_image for direct calls (though rotateImage is now primary for that).
+        image_for_command_basis = self.image_before_preview if self.image_before_preview else self.current_image
+        command = TransformCommand(self, degrees=degrees, original_image_override=image_for_command_basis.copy())
+        self.executeCommand(command)
+        self.image_before_preview = None # Clear preview state post-command
 
 '''
 class EditorContainer(QWidget):
