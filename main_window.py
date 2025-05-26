@@ -127,6 +127,10 @@ class MainWindow(QMainWindow):
         self.paste_act.setIcon(QIcon(resource_path("icons/paste.png")))
         self.paste_act.setToolTip("Paste (Ctrl+V)")
 
+        self.paste_as_new_act = QAction("Paste as New Image", self, triggered=self.pasteAsNewImage)
+        self.paste_as_new_act.setToolTip("Pastes clipboard content as a new image")
+        self.paste_as_new_act.setIcon(QIcon(resource_path("icons/paste.png")))
+
         self.crop_act = QAction("C&rop", self, shortcut="Ctrl+R", triggered=self.cropImage)
         self.crop_act.setIcon(QIcon(resource_path("icons/crop.png")))
         self.crop_act.setToolTip("Crop to Selection (Ctrl+R)")
@@ -261,6 +265,7 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self.cut_act)
         edit_menu.addAction(self.copy_act)
         edit_menu.addAction(self.paste_act)
+        edit_menu.addAction(self.paste_as_new_act)
         edit_menu.addAction(self.crop_act)
         edit_menu.addSeparator()
         edit_menu.addAction(self.select_all_act)
@@ -305,6 +310,50 @@ class MainWindow(QMainWindow):
         # Help menu
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(self.about_act)
+
+        # Connect signals for dynamic menu updates
+        edit_menu.aboutToShow.connect(self.updateEditMenuActions)
+
+        # Initial call to set correct states
+        self.updateEditMenuActions()
+
+    def updateEditMenuActions(self):
+        clipboard = QApplication.clipboard()
+        has_image_in_clipboard = clipboard.mimeData().hasImage()
+
+        self.paste_as_new_act.setEnabled(has_image_in_clipboard)
+
+        editor = self.currentEditor()
+        if editor and editor.getCurrentImage(): # Check if editor exists and has an image
+            # Standard Paste: Enabled if editor is active and clipboard has an image
+            self.paste_act.setEnabled(has_image_in_clipboard)
+            
+            # Undo/Redo: Enabled based on editor's undo/redo stack
+            self.undo_act.setEnabled(len(editor.undo_stack) > 0)
+            self.redo_act.setEnabled(len(editor.redo_stack) > 0)
+
+            # Cut/Copy/Crop: Enabled if there's a selection in the editor
+            # Assuming editor.scene.selection_rect exists and indicates a selection
+            has_selection = editor.scene.selection_rect is not None and \
+                            editor.scene.selection_rect.rect().isValid() and \
+                            not editor.scene.selection_rect.rect().isEmpty()
+            
+            self.cut_act.setEnabled(has_selection)
+            self.copy_act.setEnabled(has_selection)
+            # The existing crop_act might have its own more specific enabling logic or can use this
+            self.crop_act.setEnabled(has_selection) 
+
+            # Select All: Enabled if there is an image to select
+            self.select_all_act.setEnabled(True)
+        else:
+            # No active editor with an image
+            self.paste_act.setEnabled(False)
+            self.undo_act.setEnabled(False)
+            self.redo_act.setEnabled(False)
+            self.cut_act.setEnabled(False)
+            self.copy_act.setEnabled(False)
+            self.crop_act.setEnabled(False)
+            self.select_all_act.setEnabled(False)
 
     def update_recent_files_menu(self):
         """Обновить подменю Recent Files."""
@@ -718,6 +767,36 @@ class MainWindow(QMainWindow):
     	if not editor:
         	return
     	editor.paste()  # Delegate to ImageEditor
+
+    def pasteAsNewImage(self):
+        clipboard = QApplication.clipboard()
+        if clipboard.mimeData().hasImage():
+            image = QImage(clipboard.mimeData().imageData())
+            if not image.isNull():
+                # Create a new MDI sub-window for the image
+                sub_window = CustomMdiSubWindow(self) # Assuming CustomMdiSubWindow is imported
+                
+                # Set the image in the editor contained within the sub-window
+                # The editor is usually accessed via 'sub_window.editor_container.editor'
+                editor_instance = sub_window.editor_container.editor
+                editor_instance.setImage(image) # setImage should handle pixmap update, scene rect etc.
+                
+                # Set window title
+                title = f"Pasted Image ({image.width()}x{image.height()})"
+                sub_window.setWindowTitle(title)
+                sub_window.file_path = None # It's a new, unsaved image
+
+                self.mdi_area.addSubWindow(sub_window)
+                sub_window.show()
+                
+                # Optional: Fit image to view after showing
+                QTimer.singleShot(0, editor_instance.fitInViewWithRulers) # Or similar method
+
+                self.statusBar().showMessage(f"Pasted image as new: {title}", 2000)
+            else:
+                self.statusBar().showMessage("Could not retrieve image data from clipboard.", 2000)
+        else:
+            self.statusBar().showMessage("No image in clipboard to paste as new.", 2000)
       
     def selectAll(self):
         """Select the entire image"""
