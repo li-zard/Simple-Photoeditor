@@ -41,6 +41,8 @@ class MainWindow(QMainWindow):
         self.selection_tool_act.setChecked(True)
         # Инициализируем подменю Recent Files
         #self.update_recent_files_menu()
+        self.active_editor_scene = None
+        self.mdi_area.subWindowActivated.connect(self.onSubWindowActivated)
         
     def closeEvent(self, event):
         """Handle closing of the main window."""
@@ -354,6 +356,35 @@ class MainWindow(QMainWindow):
             self.copy_act.setEnabled(False)
             self.crop_act.setEnabled(False)
             self.select_all_act.setEnabled(False)
+
+    def onSubWindowActivated(self, activated_sub_window):
+        # Disconnect from the previous scene if any
+        if self.active_editor_scene:
+            try:
+                self.active_editor_scene.selectionChanged.disconnect(self.handleSpecificSelectionChange)
+            except TypeError: # Handles case where it might not have been connected
+                pass 
+            self.active_editor_scene = None
+
+        editor = None
+        if activated_sub_window and hasattr(activated_sub_window, 'editor_container'):
+            # Assuming CustomMdiSubWindow structure where editor is accessible
+            # via editor_container
+            if hasattr(activated_sub_window.editor_container, 'editor'):
+                editor = activated_sub_window.editor_container.editor
+        
+        if editor:
+            self.active_editor_scene = editor.scene
+            # Connect to the new active scene's selectionChanged signal
+            self.active_editor_scene.selectionChanged.connect(self.handleSpecificSelectionChange)
+        
+        # Update all actions based on the new context (newly active editor or no editor)
+        self.updateEditMenuActions()
+
+    def handleSpecificSelectionChange(self, selection_qrectf):
+        # This method is called when the selection rectangle changes in the active scene.
+        # We just need to trigger a general update of actions.
+        self.updateEditMenuActions()
 
     def update_recent_files_menu(self):
         """Обновить подменю Recent Files."""
