@@ -65,21 +65,29 @@ class ImageEditor(QGraphicsView):
         """Handle paint events."""
         super().paintEvent(event)
 
-    def setImage(self, image):
-        """Set the current image in the editor."""
-        if not image:
+    def setImage(self, image, is_initial_load=False):
+        if not image: 
             return
-        self.current_image = image
-        self.original_image = image.copy()
+
+        self.current_image = image 
+
+        if is_initial_load:
+            self.original_image = image.copy() 
+            self.is_modified = False
+            self.undo_stack.clear()
+            self.redo_stack.clear()
+            self.zoom_factor = 1.0 # Reset zoom on initial load
+
         if not self.image_item:
             self.image_item = QGraphicsPixmapItem()
             self.scene.addItem(self.image_item)
+        
         self.image_item.setPixmap(QPixmap.fromImage(self.current_image))
-        self.scene.setSceneRect(0, 0, image.width(), image.height())
-        self.image_item.setPos(0, 0)  # Always set to (0, 0)
-        self.zoom_factor = 1.0
-        self.is_modified = False
-        self.fitInViewWithRulers()
+        self.scene.setSceneRect(0, 0, self.current_image.width(), self.current_image.height())
+        self.image_item.setPos(0, 0)
+        
+        self.fitInViewWithRulers() 
+
         self.scene.update()
         self.viewport().update()
         
@@ -199,14 +207,18 @@ class ImageEditor(QGraphicsView):
         """Open an image file."""
         image = QImage(file_name)
         if image.isNull():
-            return False
-        self.setImage(image)
-        self.original_image = self.current_image.copy()
-        self.fitInView(self.image_item, Qt.KeepAspectRatio)
-        self.zoom_factor = 1.0
-        self.is_modified = False
-        self.undo_stack.clear()
-        self.redo_stack.clear()
+            # Handle error: e.g., return False or raise exception
+            return False 
+        
+        # Call setImage with is_initial_load=True
+        self.setImage(image, is_initial_load=True)
+        
+        # self.original_image = self.current_image.copy() # Handled by setImage
+        # self.fitInView(self.image_item, Qt.KeepAspectRatio) # fitInViewWithRulers is in setImage
+        # self.zoom_factor = 1.0 # Handled by setImage
+        # self.is_modified = False # Handled by setImage
+        # self.undo_stack.clear() # Handled by setImage
+        # self.redo_stack.clear() # Handled by setImage
         return True
 
     def resetView(self):

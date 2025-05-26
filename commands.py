@@ -33,7 +33,7 @@ class CropCommand(Command):
         """Crop the image to the specified rectangle."""
         from widgets import CustomMdiSubWindow
         self.cropped_image = self.original_image.copy(self.rect)
-        self.editor.setImage(self.cropped_image)
+        self.editor.setImage(self.cropped_image, is_initial_load=False)
         # Update window title
         sub_window = self.editor.parent().parent()  # ImageEditor -> EditorContainer -> CustomMdiSubWindow
         if isinstance(sub_window, CustomMdiSubWindow):
@@ -48,7 +48,7 @@ class CropCommand(Command):
     def undo(self):
         """Restore the original image."""
         from widgets import CustomMdiSubWindow
-        self.editor.setImage(self.original_image)
+        self.editor.setImage(self.original_image, is_initial_load=False)
         # Update window title
         sub_window = self.editor.parent().parent()
         if isinstance(sub_window, CustomMdiSubWindow):
@@ -127,14 +127,14 @@ class AdjustmentsCommand(Command):
             pil_img = enhancer.enhance(self.gamma)
 
         self.adjusted_image = QImage(pil_img.tobytes(), image.width(), image.height(), image.bytesPerLine(), QImage.Format_RGB32)
-        self.editor.setImage(self.adjusted_image)
+        self.editor.setImage(self.adjusted_image, is_initial_load=False)
     
     def redo(self):
         self.execute()  # Повторяем действия execute
  
     def undo(self):
         """Restore the original image."""
-        self.editor.setImage(self.original_image)
+        self.editor.setImage(self.original_image, is_initial_load=False)
 
 class TransformCommand(Command):
     def __init__(self, editor, degrees=None, horizontal_flip=None, original_image_override=None):
@@ -158,11 +158,11 @@ class TransformCommand(Command):
         elif self.horizontal_flip is not None:
             image = image.mirrored(self.horizontal_flip, not self.horizontal_flip)
         self.transformed_image = image
-        self.editor.setImage(self.transformed_image)
+        self.editor.setImage(self.transformed_image, is_initial_load=False)
 
     def undo(self):
         """Restore the original image."""
-        self.editor.setImage(self.original_image)
+        self.editor.setImage(self.original_image, is_initial_load=False)
     def redo(self):
         self.execute()
 
@@ -195,11 +195,11 @@ class GrayscaleCommand(Command):
             QMessageBox.warning(self.editor.window(), "Error", "Failed to convert image to grayscale.")
             return
         print("Setting grayscale image")  # Отладка
-        self.editor.setImage(self.grayscale_image)
+        self.editor.setImage(self.grayscale_image, is_initial_load=False)
         self.editor.window().statusBar().showMessage("Converted to grayscale", 2000)
 
     def undo(self):
-        self.editor.setImage(self.original_image)
+        self.editor.setImage(self.original_image, is_initial_load=False)
         self.editor.window().statusBar().showMessage("Grayscale undone", 2000)
 
     def redo(self):
@@ -220,7 +220,7 @@ class PasteCommand(Command):
             painter = QPainter(self.editor.current_image)
             painter.drawImage(self.selection_rect.topLeft(), self.clipboard_image)
             painter.end()
-            self.editor.setImage(self.editor.current_image)
+            self.editor.setImage(self.editor.current_image, is_initial_load=False)
             self.editor.window().statusBar().showMessage("Image pasted into selection", 2000)
         else:
             pixmap = QPixmap.fromImage(self.clipboard_image)
@@ -244,7 +244,7 @@ class PasteCommand(Command):
     def undo(self):
         """Undo the paste operation."""
         if self.selection_rect and not self.selection_rect.isEmpty():
-            self.editor.setImage(self.original_image)
+            self.editor.setImage(self.original_image, is_initial_load=False)
         else:
             if self.movable_item and self.movable_item in self.editor.pasted_items:
                 self.editor.scene.removeItem(self.movable_item)
@@ -253,7 +253,11 @@ class PasteCommand(Command):
             for item in self.editor.pasted_items:
                 if item not in self.editor.scene.items():
                     self.editor.scene.addItem(item)
-            self.editor.setImage(self.original_image)
+            # If original_image is None (e.g., pasting into an empty editor),
+            # we might not want to call setImage, or handle it appropriately.
+            # For now, assuming original_image would be valid if we're undoing a paste that didn't create a selection.
+            if self.original_image:
+                self.editor.setImage(self.original_image, is_initial_load=False)
             self.editor.scene.update()
         self.editor.is_modified = bool(self.editor.undo_stack)
         self.editor.window().statusBar().showMessage("Paste undone", 2000)
@@ -276,7 +280,7 @@ class CutCommand(Command):
         painter = QPainter(result_image)
         painter.fillRect(self.selection_rect, Qt.white)
         painter.end()
-        self.editor.setImage(result_image)
+        self.editor.setImage(result_image, is_initial_load=False)
         self.editor.scene.removeItem(self.editor.scene.selection_rect)
         self.editor.scene.selection_rect = None
         for handle in self.editor.scene.handles:
@@ -290,7 +294,7 @@ class CutCommand(Command):
 
     def undo(self):
         """Restore the original image after cutting."""
-        self.editor.setImage(self.original_image)
+        self.editor.setImage(self.original_image, is_initial_load=False)
         self.editor.is_modified = bool(self.editor.undo_stack)
         self.editor.window().statusBar().showMessage("Cut undone", 2000)
 
@@ -302,27 +306,19 @@ class ResizeCommand(Command):
 
     def undo(self):
         """Revert to the original image size."""
-        self.editor.current_image = self.old_image
-        self.editor.image_item.setPixmap(QPixmap.fromImage(self.editor.current_image))
-        self.editor.scene.setSceneRect(0, 0, self.old_image.width(), self.old_image.height())
-        self.editor.image_item.setPos(0, 0)
-        self.editor.fitInViewWithRulers()
-        self.editor.scene.update()
-        self.editor.viewport().update()
-        sub_window = self.editor.parent().parent()
-        sub_window.setWindowTitle(f"{sub_window.windowTitle().split(' (')[0]} ({self.old_image.width()}x{self.old_image.height()})")
+        self.editor.setImage(self.old_image, is_initial_load=False)
+        # Window title update can remain if not handled by setImage or a separate mechanism
+        sub_window = self.editor.parent().parent() 
+        if sub_window and hasattr(sub_window, 'setWindowTitle'): # Check if it's a window
+             sub_window.setWindowTitle(f"{sub_window.windowTitle().split(' (')[0]} ({self.old_image.width()}x{self.old_image.height()})")
 
     def redo(self):
         """Apply the resized image."""
-        self.editor.current_image = self.new_image
-        self.editor.image_item.setPixmap(QPixmap.fromImage(self.editor.current_image))
-        self.editor.scene.setSceneRect(0, 0, self.new_image.width(), self.new_image.height())
-        self.editor.image_item.setPos(0, 0)
-        self.editor.fitInViewWithRulers()
-        self.editor.scene.update()
-        self.editor.viewport().update()
+        self.editor.setImage(self.new_image, is_initial_load=False)
+        # Window title update
         sub_window = self.editor.parent().parent()
-        sub_window.setWindowTitle(f"{sub_window.windowTitle().split(' (')[0]} ({self.new_image.width()}x{self.new_image.height()})")
+        if sub_window and hasattr(sub_window, 'setWindowTitle'):
+            sub_window.setWindowTitle(f"{sub_window.windowTitle().split(' (')[0]} ({self.new_image.width()}x{self.new_image.height()})")
 
 class FixPasteCommand(Command):
     def __init__(self, editor, old_image, new_image, pasted_items):
@@ -334,26 +330,29 @@ class FixPasteCommand(Command):
 
     def undo(self):
         """Undo the fixation of pasted items."""
-        self.editor.current_image = self.old_image
-        self.editor.image_item.setPixmap(QPixmap.fromImage(self.editor.current_image))
-        self.editor.pasted_items.clear()
+        self.editor.setImage(self.old_image, is_initial_load=False)
+        # Restore movable items as they were before fixation
+        self.editor.pasted_items.clear() # Clear current list
         for item, pos in zip(self.pasted_items, self.positions):
-            self.editor.scene.addItem(item)
+            if item not in self.editor.scene.items(): # Add back if removed
+                 self.editor.scene.addItem(item)
             item.setPos(pos)
             item.setFlag(QGraphicsItem.ItemIsMovable, True)
             item.setFlag(QGraphicsItem.ItemIsSelectable, True)
-            self.editor.pasted_items.append(item)
+            self.editor.pasted_items.append(item) # Re-add to editor's list
         self.editor.scene.update()
         self.editor.viewport().update()
 
     def redo(self):
         """Redo the fixation of pasted items."""
-        self.editor.current_image = self.new_image
-        self.editor.image_item.setPixmap(QPixmap.fromImage(self.editor.current_image))
-        for item in self.pasted_items:
-            if item in self.editor.pasted_items:
-                self.editor.pasted_items.remove(item)
-            self.editor.scene.removeItem(item)
-        self.editor.pasted_items.clear()
+        # This is effectively the 'execute' part of fixing items
+        self.editor.setImage(self.new_image, is_initial_load=False)
+        # Items were already removed from scene and pasted_items list during the original fixPastedItems
+        # So, here we just ensure the editor's list is cleared if it wasn't already.
+        # The new_image should reflect the state after items were painted on.
+        for item in self.pasted_items: # Ensure they are removed from scene if somehow re-added
+            if item in self.editor.scene.items():
+                 self.editor.scene.removeItem(item)
+        self.editor.pasted_items.clear() 
         self.editor.scene.update()
         self.editor.viewport().update()

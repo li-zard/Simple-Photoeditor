@@ -473,7 +473,7 @@ class MainWindow(QMainWindow):
             new_image.setDotsPerMeterY(int(dpi * 39.37))
             
             sub_window = CustomMdiSubWindow(self)
-            sub_window.editor_container.editor.setImage(new_image)
+            sub_window.editor_container.editor.setImage(new_image, is_initial_load=True)
             sub_window.setWindowTitle(f"Untitled ({width}x{height})")
             sub_window.file_path = None  # Убедимся, что file_path установлен
             self.mdi_area.addSubWindow(sub_window)
@@ -518,7 +518,12 @@ class MainWindow(QMainWindow):
                 return
             print("Creating subwindow...")  # Отладка
             sub_window = CustomMdiSubWindow(self)
-            sub_window.editor_container.editor.setImage(image)
+            # For openFile, the ImageEditor's openImage method is used which itself calls setImage(is_initial_load=True)
+            # So, direct call to setImage with is_initial_load=True is not strictly needed here if openImage is used.
+            # However, if we are directly setting an image that was just loaded by QImage(file_name)
+            # and not using editor.openImage(), then is_initial_load=True is appropriate.
+            # The current structure of openFile in MainWindow directly calls editor.setImage.
+            sub_window.editor_container.editor.setImage(image, is_initial_load=True)
             sub_window.setWindowTitle(f"{os.path.basename(file_name)} ({image.width()}x{image.height()})")
             sub_window.file_path = file_name  # Сохраняем путь к файлу
             print("Adding subwindow to MDI area...")  # Отладка
@@ -731,7 +736,7 @@ class MainWindow(QMainWindow):
 
             # Создаем новый редактор
             sub_window = CustomMdiSubWindow(self) # Pass self as main_window
-            sub_window.editor_container.editor.setImage(qimage)
+            sub_window.editor_container.editor.setImage(qimage, is_initial_load=True)
             self.mdi_area.addSubWindow(sub_window)
             sub_window.setWindowTitle(f"Scanned Image ({dpi} DPI)")
             sub_window.file_path = None
@@ -810,7 +815,7 @@ class MainWindow(QMainWindow):
                 # Set the image in the editor contained within the sub-window
                 # The editor is usually accessed via 'sub_window.editor_container.editor'
                 editor_instance = sub_window.editor_container.editor
-                editor_instance.setImage(image) # setImage should handle pixmap update, scene rect etc.
+                editor_instance.setImage(image, is_initial_load=True) # setImage should handle pixmap update, scene rect etc.
                 
                 # Set window title
                 title = f"Pasted Image ({image.width()}x{image.height()})"
