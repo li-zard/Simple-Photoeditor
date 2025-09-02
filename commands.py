@@ -58,13 +58,16 @@ class CropCommand(Command):
         self.editor.window().statusBar().showMessage("Crop undone", 2000)
         
 class AdjustmentsCommand(Command):
-    def __init__(self, editor, brightness, contrast, gamma, autobalance=False):
+    def __init__(self, editor, brightness, contrast, gamma, autobalance=False, original_image_override=None):
         self.editor = editor
         self.brightness = brightness
         self.contrast = contrast
         self.gamma = gamma
         self.autobalance = autobalance
-        self.original_image = editor.getCurrentImage().copy()
+        if original_image_override:
+            self.original_image = original_image_override
+        else:
+            self.original_image = editor.getCurrentImage().copy()
         self.adjusted_image = None
 
     def execute(self):

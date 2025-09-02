@@ -441,6 +441,79 @@ class ImageEditor(QGraphicsView):
         self.executeCommand(command)
         self.image_before_preview = None # Clear preview state post-command
 
+    def preview_adjustments(self, brightness, contrast, gamma, autobalance):
+        if self.image_before_preview and self.image_item:
+            image = self.image_before_preview.copy()
+            if autobalance:
+                width, height = image.width(), image.height()
+                ptr = image.bits()
+                ptr.setsize(height * width * 4)
+                img_array = np.frombuffer(ptr, dtype=np.uint8).reshape(height, width, 4).copy()
+
+                r_hist = np.histogram(img_array[:, :, 2], bins=256, range=(0, 256))[0]
+                g_hist = np.histogram(img_array[:, :, 1], bins=256, range=(0, 256))[0]
+                b_hist = np.histogram(img_array[:, :, 0], bins=256, range=(0, 256))[0]
+                total_pixels = width * height
+                threshold = total_pixels * 0.05
+
+                def find_bounds(hist):
+                    low, high = 0, 255
+                    count = 0
+                    for i, val in enumerate(hist):
+                        count += val
+                        if count > threshold:
+                            low = i
+                            break
+                    count = 0
+                    for i, val in enumerate(hist[::-1]):
+                        count += val
+                        if count > threshold:
+                            high = 255 - i
+                            break
+                    if low >= high:
+                        high = low + 1 if low < 255 else 255
+                        low = high - 1 if high > 0 else 0
+                    return low, high
+
+                r_low, r_high = find_bounds(r_hist)
+                g_low, g_high = find_bounds(g_hist)
+                b_low, b_high = find_bounds(b_hist)
+
+                r_range = max(r_high - r_low, 1)
+                g_range = max(g_high - g_low, 1)
+                b_range = max(b_high - b_low, 1)
+
+                img_array[:, :, 2] = np.clip((img_array[:, :, 2].astype(np.float32) - r_low) * 255 / r_range, 0, 255).astype(np.uint8)
+                img_array[:, :, 1] = np.clip((img_array[:, :, 1].astype(np.float32) - g_low) * 255 / g_range, 0, 255).astype(np.uint8)
+                img_array[:, :, 0] = np.clip((img_array[:, :, 0].astype(np.float32) - b_low) * 255 / b_range, 0, 255).astype(np.uint8)
+
+                image = QImage(img_array.tobytes(), width, height, image.bytesPerLine(), QImage.Format_RGB32)
+
+            pil_img = Image.frombytes("RGBA", (image.width(), image.height()), image.bits().asstring(image.byteCount()))
+            if brightness != 0:
+                enhancer = ImageEnhance.Brightness(pil_img)
+                pil_img = enhancer.enhance(1.0 + brightness)
+            if contrast != 0:
+                enhancer = ImageEnhance.Contrast(pil_img)
+                pil_img = enhancer.enhance(1.0 + contrast)
+            if gamma != 1.0:
+                enhancer = ImageEnhance.Brightness(pil_img)
+                pil_img = enhancer.enhance(gamma)
+
+            preview_image = QImage(pil_img.tobytes(), image.width(), image.height(), image.bytesPerLine(), QImage.Format_RGB32)
+            self.current_image = preview_image
+            self.image_item.setPixmap(QPixmap.fromImage(self.current_image))
+            self.scene.update()
+            self.viewport().update()
+
+    def apply_adjustments(self, brightness, contrast, gamma, autobalance):
+        if not self.current_image: return
+        from commands import AdjustmentsCommand
+        image_for_command_basis = self.image_before_preview if self.image_before_preview else self.current_image
+        command = AdjustmentsCommand(self, brightness, contrast, gamma, autobalance, original_image_override=image_for_command_basis.copy())
+        self.executeCommand(command)
+        self.image_before_preview = None
+
 '''
 class EditorContainer(QWidget):
     def __init__(self, parent=None):

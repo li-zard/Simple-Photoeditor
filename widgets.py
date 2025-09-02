@@ -224,6 +224,7 @@ class AdjustmentsDialog(QDialog):
         super().__init__(parent)
         self.editor = editor
         self.setWindowTitle("Adjust Image")
+        self.editor.start_preview()
         self.layout = QVBoxLayout(self)
 
         self.brightness_label = QLabel("Brightness: 0", self)
@@ -231,29 +232,29 @@ class AdjustmentsDialog(QDialog):
         self.brightness_slider.setRange(-100, 100)
         self.brightness_slider.setValue(0)
         self.brightness_slider.valueChanged.connect(self.updateBrightnessLabel)
+        self.brightness_slider.valueChanged.connect(self.previewAdjustments)
 
         self.contrast_label = QLabel("Contrast: 0", self)
         self.contrast_slider = QSlider(Qt.Horizontal, self)
         self.contrast_slider.setRange(-100, 100)
         self.contrast_slider.setValue(0)
         self.contrast_slider.valueChanged.connect(self.updateContrastLabel)
+        self.contrast_slider.valueChanged.connect(self.previewAdjustments)
 
         self.gamma_label = QLabel("Gamma: 1.0", self)
         self.gamma_slider = QSlider(Qt.Horizontal, self)
         self.gamma_slider.setRange(1, 500)
         self.gamma_slider.setValue(100)
         self.gamma_slider.valueChanged.connect(self.updateGammaLabel)
+        self.gamma_slider.valueChanged.connect(self.previewAdjustments)
 
         self.autobalance_button = QPushButton("Autobalance", self)
         self.autobalance_button.setCheckable(True)
         self.autobalance_button.clicked.connect(self.previewAdjustments)
 
-        self.preview_button = QPushButton("Preview", self)
-        self.preview_button.clicked.connect(self.previewAdjustments)
-
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         self.buttons.accepted.connect(self.applyAdjustments)
-        self.buttons.rejected.connect(self.reject)
+        self.buttons.rejected.connect(self.reject_dialog)
 
         self.layout.addWidget(self.brightness_label)
         self.layout.addWidget(self.brightness_slider)
@@ -262,7 +263,6 @@ class AdjustmentsDialog(QDialog):
         self.layout.addWidget(self.gamma_label)
         self.layout.addWidget(self.gamma_slider)
         self.layout.addWidget(self.autobalance_button)
-        self.layout.addWidget(self.preview_button)
         self.layout.addWidget(self.buttons)
 
     def updateBrightnessLabel(self, value):
@@ -283,8 +283,7 @@ class AdjustmentsDialog(QDialog):
         contrast = self.contrast_slider.value() / 100.0
         gamma = self.gamma_slider.value() / 100.0
         autobalance = self.autobalance_button.isChecked()
-        command = AdjustmentsCommand(self.editor, brightness, contrast, gamma, autobalance)
-        command.execute()
+        self.editor.preview_adjustments(brightness, contrast, gamma, autobalance)
 
     def applyAdjustments(self):
         """Apply the adjustments and close the dialog."""
@@ -292,9 +291,13 @@ class AdjustmentsDialog(QDialog):
         contrast = self.contrast_slider.value() / 100.0
         gamma = self.gamma_slider.value() / 100.0
         autobalance = self.autobalance_button.isChecked()
-        command = AdjustmentsCommand(self.editor, brightness, contrast, gamma, autobalance)
-        self.editor.executeCommand(command)
+        self.editor.apply_adjustments(brightness, contrast, gamma, autobalance)
         self.accept()
+
+    def reject_dialog(self):
+        """Cancel the preview and reject the dialog."""
+        self.editor.cancel_preview()
+        self.reject()
 
 class ResizeDialog(QDialog):
     def __init__(self, current_width, current_height, parent=None):
