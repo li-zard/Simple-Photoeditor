@@ -394,7 +394,8 @@ class MainWindow(QMainWindow):
             
             sub_window = CustomMdiSubWindow(self)
             sub_window.editor_container.editor.setImage(new_image)
-            sub_window.setWindowTitle(f"Untitled ({width}x{height})")
+            sub_window.base_title = "Untitled"
+            sub_window.setWindowTitle(f"Untitled ({width}x{height}) @ 100%")
             sub_window.file_path = None  # Убедимся, что file_path установлен
             self.mdi_area.addSubWindow(sub_window)
             sub_window.show()
@@ -439,7 +440,8 @@ class MainWindow(QMainWindow):
             print("Creating subwindow...")  # Отладка
             sub_window = CustomMdiSubWindow(self)
             sub_window.editor_container.editor.setImage(image)
-            sub_window.setWindowTitle(f"{os.path.basename(file_name)} ({image.width()}x{image.height()})")
+            sub_window.base_title = os.path.basename(file_name)
+            sub_window.setWindowTitle(f"{os.path.basename(file_name)} ({image.width()}x{image.height()}) @ 100%")
             sub_window.file_path = file_name  # Сохраняем путь к файлу
             print("Adding subwindow to MDI area...")  # Отладка
             self.mdi_area.addSubWindow(sub_window)
@@ -790,9 +792,6 @@ class MainWindow(QMainWindow):
             width, height, keep_aspect = dialog.getNewSize()
             editor.resizeImage(width, height, keep_aspect)
             self.statusBar().showMessage(f"Image resized to {width}x{height}", 2000)
-            sub_window = self.mdi_area.activeSubWindow()
-            if sub_window:
-                sub_window.setWindowTitle(f"{sub_window.windowTitle().split(' (')[0]} ({width}x{height})")
     
     def rotateImage(self, degrees):
         """Rotate the image by specified degrees"""

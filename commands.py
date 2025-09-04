@@ -34,12 +34,6 @@ class CropCommand(Command):
         from widgets import CustomMdiSubWindow
         self.cropped_image = self.original_image.copy(self.rect)
         self.editor.setImage(self.cropped_image)
-        # Update window title
-        sub_window = self.editor.parent().parent()  # ImageEditor -> EditorContainer -> CustomMdiSubWindow
-        if isinstance(sub_window, CustomMdiSubWindow):
-            new_width = self.cropped_image.width()
-            new_height = self.cropped_image.height()
-            sub_window.setWindowTitle(f"{sub_window.windowTitle().split(' (')[0]} ({new_width}x{new_height})")
         self.editor.window().statusBar().showMessage(f"Image cropped to {self.rect.width()}x{self.rect.height()}", 2000)
 
     def redo(self):
@@ -49,12 +43,6 @@ class CropCommand(Command):
         """Restore the original image."""
         from widgets import CustomMdiSubWindow
         self.editor.setImage(self.original_image)
-        # Update window title
-        sub_window = self.editor.parent().parent()
-        if isinstance(sub_window, CustomMdiSubWindow):
-            orig_width = self.original_image.width()
-            orig_height = self.original_image.height()
-            sub_window.setWindowTitle(f"{sub_window.windowTitle().split(' (')[0]} ({orig_width}x{orig_height})")
         self.editor.window().statusBar().showMessage("Crop undone", 2000)
         
 class AdjustmentsCommand(Command):
@@ -221,6 +209,8 @@ class PasteCommand(Command):
         """Paste the clipboard image either into a selection or as a movable item."""
         if self.selection_rect and not self.selection_rect.isEmpty():
             painter = QPainter(self.editor.current_image)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.SmoothPixmapTransform)
             painter.drawImage(self.selection_rect.topLeft(), self.clipboard_image)
             painter.end()
             self.editor.setImage(self.editor.current_image)
@@ -312,8 +302,6 @@ class ResizeCommand(Command):
         self.editor.fitInViewWithRulers()
         self.editor.scene.update()
         self.editor.viewport().update()
-        sub_window = self.editor.parent().parent()
-        sub_window.setWindowTitle(f"{sub_window.windowTitle().split(' (')[0]} ({self.old_image.width()}x{self.old_image.height()})")
 
     def redo(self):
         """Apply the resized image."""
@@ -324,8 +312,6 @@ class ResizeCommand(Command):
         self.editor.fitInViewWithRulers()
         self.editor.scene.update()
         self.editor.viewport().update()
-        sub_window = self.editor.parent().parent()
-        sub_window.setWindowTitle(f"{sub_window.windowTitle().split(' (')[0]} ({self.new_image.width()}x{self.new_image.height()})")
 
 class FixPasteCommand(Command):
     def __init__(self, editor, old_image, new_image, pasted_items):

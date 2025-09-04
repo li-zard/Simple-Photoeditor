@@ -73,6 +73,7 @@ class ImageEditor(QGraphicsView):
         self.original_image = image.copy()
         if not self.image_item:
             self.image_item = QGraphicsPixmapItem()
+            self.image_item.setTransformationMode(Qt.SmoothTransformation)
             self.scene.addItem(self.image_item)
         self.image_item.setPixmap(QPixmap.fromImage(self.current_image))
         self.scene.setSceneRect(0, 0, image.width(), image.height())
@@ -116,6 +117,8 @@ class ImageEditor(QGraphicsView):
             return
         old_image = self.current_image.copy()
         painter = QPainter(self.current_image)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
         for item in self.pasted_items:
             pos = item.pos()
             pixmap = item.pixmap()
@@ -152,6 +155,7 @@ class ImageEditor(QGraphicsView):
         #  zoom_factor from scale
         transform = self.transform()
         self.zoom_factor = transform.m11()  # Scale by X (If Keep aspect ratio then m11 == m22)
+        self.updateWindowTitle()
         self.scene.update()
         self.viewport().update()
     
@@ -170,6 +174,7 @@ class ImageEditor(QGraphicsView):
         self.redo_stack.append(command)
         command.undo()
         self.is_modified = bool(self.undo_stack)  # Update flag of changes
+        self.updateWindowTitle()
         self.scene.update()
         self.viewport().update()
         self.window().statusBar().showMessage("Undo performed", 2000)
@@ -182,6 +187,7 @@ class ImageEditor(QGraphicsView):
         self.undo_stack.append(command)
         command.redo()
         self.is_modified = True  # After redo always chsnges there
+        self.updateWindowTitle()
         self.scene.update()
         self.viewport().update()
         self.window().statusBar().showMessage("Redo performed", 2000)
@@ -221,6 +227,7 @@ class ImageEditor(QGraphicsView):
         self.zoom_factor *= 1.25
         self.resetTransform()
         self.scale(self.zoom_factor, self.zoom_factor)
+        self.updateWindowTitle()
         self.scene.update()
         self.viewport().update()
         if self.rulers_visible:
@@ -233,6 +240,7 @@ class ImageEditor(QGraphicsView):
         self.zoom_factor /= 1.25
         self.resetTransform()
         self.scale(self.zoom_factor, self.zoom_factor)
+        self.updateWindowTitle()
         self.scene.update()
         self.viewport().update()
         if self.rulers_visible:
@@ -270,6 +278,8 @@ class ImageEditor(QGraphicsView):
         selection = self.scene.selection_rect.rect().toRect()
         if selection.isValid() and not selection.isEmpty():
             painter = QPainter(self.current_image)
+            painter.setRenderHint(QPainter.Antialiasing)
+            painter.setRenderHint(QPainter.SmoothPixmapTransform)
             painter.drawImage(selection.topLeft(), image)
             painter.end()
             self.setImage(self.current_image)
@@ -354,10 +364,7 @@ class ImageEditor(QGraphicsView):
         command = ResizeCommand(self, old_image, self.current_image.copy())
         self.undo_stack.append(command)
         self.redo_stack.clear()
-        # Обновляем заголовок окна
-        sub_window = self.parent().parent()
-        if sub_window:
-            sub_window.setWindowTitle(f"{sub_window.windowTitle().split(' (')[0]} ({new_width}x{new_height})")
+        self.updateWindowTitle()
         
     
     def convertToGrayscale(self):
@@ -402,6 +409,8 @@ class ImageEditor(QGraphicsView):
         if mime_data.hasImage():
             clipboard_image = QImage(mime_data.imageData())
             if not clipboard_image.isNull():
+                # Convert to a high-quality format with an alpha channel to preserve quality
+                clipboard_image = clipboard_image.convertToFormat(QImage.Format_ARGB32)
                 from commands import PasteCommand
                 
                 command = PasteCommand(self, clipboard_image)
@@ -513,6 +522,24 @@ class ImageEditor(QGraphicsView):
         command = AdjustmentsCommand(self, brightness, contrast, gamma, autobalance, original_image_override=image_for_command_basis.copy())
         self.executeCommand(command)
         self.image_before_preview = None
+
+    def updateWindowTitle(self):
+        from widgets import CustomMdiSubWindow
+        sub_window = self.parent().parent()
+        if not isinstance(sub_window, CustomMdiSubWindow):
+            return
+
+        if not hasattr(sub_window, 'base_title'):
+            sub_window.base_title = sub_window.windowTitle().split(' (')[0]
+
+        if self.current_image:
+            width = self.current_image.width()
+            height = self.current_image.height()
+            zoom_percent = int(self.zoom_factor * 100)
+            modified_indicator = "*" if self.is_modified else ""
+            base_title = sub_window.base_title
+            new_title = f"{base_title}{modified_indicator} ({width}x{height}) @ {zoom_percent}%"
+            sub_window.setWindowTitle(new_title)
 
 '''
 class EditorContainer(QWidget):

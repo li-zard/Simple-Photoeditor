@@ -188,6 +188,7 @@ class MovableImageItem(QGraphicsPixmapItem):
     def __init__(self, pixmap, parent=None):
         """Initialize a movable image item."""
         super().__init__(pixmap, parent)
+        self.setTransformationMode(Qt.SmoothTransformation)
         self.setFlag(QGraphicsPixmapItem.ItemIsMovable, True)
         self.setFlag(QGraphicsPixmapItem.ItemIsSelectable, True)
         self.setCursor(Qt.SizeAllCursor)
