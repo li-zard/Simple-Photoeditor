@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QAction, QFileDialog, QDialog, QMenu, QMdiArea, QMessageBox,
     QApplication, QStatusBar, QGraphicsView, QCheckBox, QInputDialog
 )
-from PyQt5.QtGui import QIcon, QPixmap, QImage, QPen
+from PyQt5.QtGui import QIcon, QPixmap, QImage, QPen, QColor
 from PyQt5.QtCore import Qt, QRectF, QTimer
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from editor import ImageEditor, EditorContainer
@@ -26,25 +26,25 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Simple Photo Editor")
         self.setGeometry(100, 100, 1000, 800)
-        
+
         self.mdi_area = QMdiArea()
         self.setCentralWidget(self.mdi_area)
-        
+
         self.statusBar().showMessage("Ready")
-        
+
         self.createActions()
         self.createMenus()
         self.createToolbars()
-        
+
         self.clipboard = QApplication.clipboard()
         self.selection_tool_act = QAction("Selection Tool", self, checkable=True, triggered=lambda: self.setTool("selection"))
         self.selection_tool_act.setChecked(True)
         # Инициализируем подменю Recent Files
         #self.update_recent_files_menu()
-        
+
     def closeEvent(self, event):
         """Handle closing of the main window."""
-        for sub_window in self.mdi_area.subWindowList():  
+        for sub_window in self.mdi_area.subWindowList():
             if sub_window.editor_container.editor.is_modified:
                 reply = self.confirmSave(sub_window.windowTitle())
                 if reply == "save":
@@ -55,7 +55,7 @@ class MainWindow(QMainWindow):
                     event.ignore()
                     return
         event.accept()
-    
+
     def confirmSave(self, title):
         """Show a dialog to confirm saving changes and return the user's choice."""
         if not title:
@@ -72,9 +72,9 @@ class MainWindow(QMainWindow):
         elif reply == QMessageBox.Discard:
             return "discard"
         else:
-            return "cancel"    
-    
-    
+            return "cancel"
+
+
     def createActions(self):
         """Create actions for menus and toolbars"""
         # File actions
@@ -139,7 +139,7 @@ class MainWindow(QMainWindow):
         self.resizeAct = QAction(QIcon(resource_path("icons/resize.png")), "&Resize...", self)
         self.resizeAct.setStatusTip("Resize the image")
         self.resizeAct.triggered.connect(self.resizeImage)
-        
+
         self.select_all_act = QAction("Select &All", self, shortcut="Ctrl+A", triggered=self.selectAll)
         self.select_all_act.setIcon(QIcon(resource_path("icons/select_all.png")))
         self.select_all_act.setToolTip("Select All (Ctrl+A)")
@@ -165,7 +165,7 @@ class MainWindow(QMainWindow):
         self.toggle_rulers_act.setIcon(QIcon(resource_path("icons/ruler.png")))
         self.toggle_rulers_act.setToolTip("Show Rulers")
         self.toggle_rulers_act.triggered.connect(self.toggleRulers)  # Подключаем сигнал triggered
-        
+
         #self.toggle_rulers_act = QAction("Show &Rulers", self, checkable=True, triggered=self.toggleRulers)
         #self.toggle_rulers_act.setIcon(QIcon(resource_path("icons/ruler.png")))  # Если нет, подбери подходящую
         #self.toggle_rulers_act.setToolTip("Show Rulers")
@@ -228,13 +228,13 @@ class MainWindow(QMainWindow):
         self.selection_tool_act = QAction("Selection Tool", self, triggered=self.activateSelectionTool)
         self.selection_tool_act.setIcon(QIcon(resource_path("icons/select.png")))
         self.selection_tool_act.setToolTip("Selection Tool")
-        
+
 
         # Help actions
         self.about_act = QAction("&About", self, triggered=self.about)
         self.about_act.setIcon(QIcon(resource_path("icons/about.png")))
         self.about_act.setToolTip("About")
-    
+
     def createMenus(self):
         """Create menu bar"""
         # File menu
@@ -251,7 +251,7 @@ class MainWindow(QMainWindow):
         file_menu.addAction(self.print_act)
         file_menu.addSeparator()
         file_menu.addAction(self.exit_act)
-        
+
 
         # Edit menu
         edit_menu = self.menuBar().addMenu("&Edit")
@@ -264,7 +264,7 @@ class MainWindow(QMainWindow):
         edit_menu.addAction(self.crop_act)
         edit_menu.addSeparator()
         edit_menu.addAction(self.select_all_act)
-        
+
         # View menu
         view_menu = self.menuBar().addMenu("&View")
         view_menu.addAction(self.zoom_in_act)
@@ -273,7 +273,7 @@ class MainWindow(QMainWindow):
         view_menu.addAction(self.actual_size_act)
         view_menu.addSeparator()
         view_menu.addAction(self.toggle_rulers_act)
-        
+
         # Image menu
         image_menu = self.menuBar().addMenu("&Image")
         rotate_menu = image_menu.addMenu("&Rotate")
@@ -284,16 +284,16 @@ class MainWindow(QMainWindow):
         rotate_menu.addAction(self.precise_rotate_act)
         image_menu.addAction(self.crop_act)
         image_menu.addAction(self.resizeAct)
-        
-        
+
+
         flip_menu = image_menu.addMenu("&Flip")
         flip_menu.addAction(self.flip_horizontal_act)
         flip_menu.addAction(self.flip_vertical_act)
-        
+
         image_menu.addSeparator()
         image_menu.addAction(self.grayscale_act)
         image_menu.addAction(self.adjustments_act)
-        
+
         # Window menu
         window_menu = self.menuBar().addMenu("&Window")
         window_menu.addAction(self.tile_act)
@@ -301,7 +301,7 @@ class MainWindow(QMainWindow):
         window_menu.addSeparator()
         window_menu.addAction(self.next_act)
         window_menu.addAction(self.previous_act)
-        
+
         # Help menu
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(self.about_act)
@@ -321,8 +321,8 @@ class MainWindow(QMainWindow):
                 file_action.setData(file_path)  # Сохраняем полный путь в данных действия
                 file_action.triggered.connect(lambda checked, path=file_path: self.openFile(path))
                 self.recent_files_menu.addAction(file_action)
-    
-    
+
+
     def createToolbars(self):
         """Create toolbars with icons and tooltips"""
         style = self.style()
@@ -360,46 +360,76 @@ class MainWindow(QMainWindow):
         image_toolbar.addAction(self.grayscale_act)
         image_toolbar.addAction(self.adjustments_act)
         image_toolbar.addAction(self.crop_act)  # Добавляем Crop
-        image_toolbar.addAction(self.resizeAct) 
+        image_toolbar.addAction(self.resizeAct)
 
         # Tools toolbar
         tool_toolbar = self.addToolBar("Tools")
         tool_toolbar.setToolButtonStyle(Qt.ToolButtonIconOnly)
         tool_toolbar.addAction(self.selection_tool_act)
-    
+
     def activateSelectionTool(self):
         editor = self.currentEditor()
         if editor:
             editor.scene.current_tool = "selection"
             self.statusBar().showMessage("Selection tool active: Click and drag to select an area")
             editor.setDragMode(QGraphicsView.NoDrag)
-   
-    
+
+
     def currentEditor(self):
         """Get the current active editor"""
         active_window = self.mdi_area.activeSubWindow()
         if active_window:
             return active_window.editor_container.editor  # Получаем ImageEditor из EditorContainer
         return None
-    
+
     def newFile(self):
         dialog = NewImageDialog(self)
         if dialog.exec_() == QDialog.Accepted:
-            width, height, dpi, bg_color = dialog.getImageParameters()
-            
-            new_image = QImage(width, height, QImage.Format_RGBA8888)
-            new_image.fill(bg_color if bg_color is not None else Qt.white)
+            width, height, dpi, bg_color, color_depth = dialog.getImageParameters()
+
+            # Determine image format from color depth
+            if color_depth == "24-bit color":
+                image_format = QImage.Format_RGB32
+            elif color_depth == "8-bit palette":
+                image_format = QImage.Format_Indexed8
+            elif color_depth == "8-bit grayscale":
+                image_format = QImage.Format_Grayscale8
+            elif color_depth == "1-bit monochrome":
+                image_format = QImage.Format_Mono
+            else:
+                image_format = QImage.Format_RGB32  # Default
+
+            new_image = QImage(width, height, image_format)
             new_image.setDotsPerMeterX(int(dpi * 39.37))
             new_image.setDotsPerMeterY(int(dpi * 39.37))
-            
+
+            # Handle background color based on format
+            if image_format == QImage.Format_Indexed8:
+                # For indexed color, we create a color table
+                color_table = [QColor(Qt.white).rgb(), QColor(Qt.black).rgb()]
+                if bg_color:
+                    color_table[0] = bg_color.rgb()
+                new_image.setColorTable(color_table)
+                new_image.fill(0) # Fill with the first color in the table
+            elif image_format == QImage.Format_Mono:
+                 # For monochrome, 0 is typically white, 1 is black.
+                new_image.setColor(0, QColor(Qt.white).rgb())
+                new_image.setColor(1, QColor(Qt.black).rgb())
+                # Fill with 0 (white) or 1 (black) depending on bg_color brightness
+                if bg_color.lightness() < 128:
+                    new_image.fill(1)
+                else:
+                    new_image.fill(0)
+            else:
+                # For other formats, fill with the selected color
+                new_image.fill(bg_color if bg_color is not None else Qt.white)
+
             sub_window = CustomMdiSubWindow(self)
             sub_window.editor_container.editor.setImage(new_image)
-            sub_window.base_title = "Untitled"
-            sub_window.setWindowTitle(f"Untitled ({width}x{height}) @ 100%")
-            sub_window.file_path = None  # Убедимся, что file_path установлен
+            sub_window.setWindowTitle(f"Untitled ({width}x{height})")
+            sub_window.file_path = None
             self.mdi_area.addSubWindow(sub_window)
             sub_window.show()
-            # Принудительно масштабируем сцену после отображения
             sub_window.editor_container.editor.fitInViewWithRulers()
 
 
@@ -413,9 +443,9 @@ class MainWindow(QMainWindow):
             print("Opening file dialog...")  # Отладка
             try:
                 file_name, _ = QFileDialog.getOpenFileName(
-                    self, 
-                    "Open Image", 
-                    "", 
+                    self,
+                    "Open Image",
+                    "",
                     "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff)"
                 )
                 print(f"File dialog returned: {file_name}")  # Отладка
@@ -466,8 +496,8 @@ class MainWindow(QMainWindow):
         else:
             print("No file selected, exiting openFile")  # Отладка
 
- 
-    
+
+
     def loadFile(self, file_path):
         sub_window = CustomMdiSubWindow(self)
         if sub_window.editor_container.editor.openImage(file_path):  # Используем openImage через EditorContainer
@@ -498,9 +528,9 @@ class MainWindow(QMainWindow):
         file_name = getattr(sub_window, 'file_path', None)
         if not file_name:  # Если пути нет, открываем диалог
             file_name, selected_filter = QFileDialog.getSaveFileName(
-                self, 
-                "Save Image", 
-                "", 
+                self,
+                "Save Image",
+                "",
                 "PNG Files (*.png);;JPEG Files (*.jpg *.jpeg);;BMP Files (*.bmp);;GIF Files (*.gif);;TIFF Files (*.tiff);;All Files (*)",
                 "PNG Files (*.png)"  # Фильтр по умолчанию
             )
@@ -520,30 +550,30 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Failed to save file: {e}")
                 return False
         return False
-        
+
     def saveFileAs(self, sub_window=None):
         if not sub_window:
             sub_window = self.mdi_area.activeSubWindow()
         if not sub_window:
             return False
-        
+
         editor = sub_window.editor_container.editor
         if not editor:
             return False
-        
+
         editor.applyAllPastedItems()
-        
-        file_path, selected_filter = QFileDialog.getSaveFileName(self, "Save Image", "", 
+
+        file_path, selected_filter = QFileDialog.getSaveFileName(self, "Save Image", "",
             "PNG Files (*.png);;JPEG Files (*.jpg *.jpeg);;BMP Files (*.bmp);;TIFF Files (*.tif *.tiff);;All Files (*)",
             "PNG Files (*.png)"  # Фильтр по умолчанию
         )
-        
+
         if file_path:
             # Проверяем, есть ли расширение в имени файла
             if not os.path.splitext(file_path)[1]:  # Если расширения нет
                 file_path += ".png"  # Добавляем .png по умолчанию
                 print(f"Added .png extension: {file_path}")  # Отладка
-            
+
             if self.saveImageToFile(editor, file_path):
                 image_size = editor.getCurrentImage().size()
                 width = image_size.width()
@@ -556,7 +586,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Failed to save file: {file_path}\nEnsure the path is valid and you have write permissions.")
                 return False
         return False
-    
+
     def toggleRulers(self):
         print("MainWindow.toggleRulers called")  # Отладка
         sub_window = self.mdi_area.activeSubWindow()
@@ -564,8 +594,8 @@ class MainWindow(QMainWindow):
             # Переключаем состояние линеек
             current_state = sub_window.editor_container.editor.rulers_visible
             sub_window.editor_container.toggleRulers(not current_state)
-  
-    
+
+
     def saveImageToFile(self, editor, file_path):
         """Save the image to a file."""
         image = editor.getCurrentImage()
@@ -581,16 +611,16 @@ class MainWindow(QMainWindow):
                 print(f"Failed to save image to {file_path}: {e}")  # Отладка
                 return False
         return False
-    
+
     def printFile(self):
         """Print the current image"""
         editor = self.currentEditor()
         if not editor:
             return
-        
+
         printer = QPrinter(QPrinter.HighResolution)
         dialog = QPrintDialog(printer, self)
-        
+
         if dialog.exec_() == QPrintDialog.Accepted:
             painter = QPainter(printer)
             rect = painter.viewport()
@@ -600,7 +630,7 @@ class MainWindow(QMainWindow):
             painter.setWindow(editor.getCurrentImage().rect())
             painter.drawImage(0, 0, editor.getCurrentImage())
             painter.end()
-    
+
     def scanImage(self):
         """Scan an image using WIA with DPI selection"""
         if not WIA_AVAILABLE:
@@ -641,7 +671,7 @@ class MainWindow(QMainWindow):
             # Выполняем сканирование
             image_file = item.Transfer() # WIA.ImageFile object
             binary_data = image_file.FileData.BinaryData # This is a bytes object
-            
+
             # Create QImage from binary data
             qimage = QImage()
             qimage.loadFromData(binary_data)
@@ -694,7 +724,7 @@ class MainWindow(QMainWindow):
         if editor:
             editor.redo()
             self.statusBar().showMessage("Redo performed", 2000)
-   
+
     def cut(self):
             """Cut the selected area"""
             editor = self.currentEditor()
@@ -720,24 +750,24 @@ class MainWindow(QMainWindow):
     	if not editor:
         	return
     	editor.paste()  # Delegate to ImageEditor
-      
+
     def selectAll(self):
         """Select the entire image"""
         editor = self.currentEditor()
         if not editor:
             return
         editor.paste()  # Уже вызывает обновлённый метод
-    
+
         image = editor.getCurrentImage()
         if image:
             if editor.scene.selection_rect:
                 editor.scene.removeItem(editor.scene.selection_rect)
-        
+
             # Create selection rectangle for the entire image
             rect = QRectF(0, 0, image.width(), image.height())
             editor.scene.selection_rect = editor.scene.addRect(rect, QPen(Qt.DashLine))
             editor.scene.selectionChanged.emit(rect)
-    
+
     def cropImage(self):
         editor = self.currentEditor()
         if not editor:
@@ -758,7 +788,7 @@ class MainWindow(QMainWindow):
             editor.scene.removeItem(handle)
         editor.scene.handles.clear()
         self.statusBar().showMessage(f"Image cropped to {rect.width()}x{rect.height()}", 2000)
-    
+
     def zoomIn(self):
         editor = self.currentEditor()
         if editor:
@@ -778,8 +808,8 @@ class MainWindow(QMainWindow):
         editor = self.currentEditor()
         if editor:
             editor.actualSize()
-   
-   
+
+
     def resizeImage(self):
         """Resize the current image."""
         editor = self.currentEditor()
@@ -792,7 +822,7 @@ class MainWindow(QMainWindow):
             width, height, keep_aspect = dialog.getNewSize()
             editor.resizeImage(width, height, keep_aspect)
             self.statusBar().showMessage(f"Image resized to {width}x{height}", 2000)
-    
+
     def rotateImage(self, degrees):
         """Rotate the image by specified degrees"""
         editor = self.currentEditor()
@@ -810,16 +840,16 @@ class MainWindow(QMainWindow):
         editor = self.currentEditor()
         if editor:
             editor.convertToGrayscale()
-  
+
     def showAdjustmentsDialog(self):
         """Show adjustments dialog"""
         editor = self.currentEditor()
         if editor:
             dialog = AdjustmentsDialog(editor, self)
             if dialog.exec_():
-                self.statusBar().showMessage("Adjustments applied", 2000)  
- 
-    
+                self.statusBar().showMessage("Adjustments applied", 2000)
+
+
     def about(self):
         """Show the about dialog"""
         QMessageBox.about(self, "About Simple Photo Editor",

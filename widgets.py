@@ -1,6 +1,7 @@
 from PyQt5.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
-    QLineEdit, QPushButton, QSlider, QMdiSubWindow, QDialogButtonBox, QCheckBox, QMessageBox, QSpinBox
+    QLineEdit, QPushButton, QSlider, QMdiSubWindow, QDialogButtonBox, QCheckBox, 
+    QMessageBox, QSpinBox, QComboBox, QColorDialog
 )
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QFontMetrics
 from PyQt5.QtCore import Qt, QSize, QRectF
@@ -193,30 +194,89 @@ class NewImageDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("New Image")
         self.layout = QGridLayout(self)
+        
+        # Width
         self.width_label = QLabel("Width:", self)
         self.width_edit = QLineEdit("800", self)
+        
+        # Height
         self.height_label = QLabel("Height:", self)
         self.height_edit = QLineEdit("600", self)
+        
+        # Units
+        self.units_label = QLabel("Units:", self)
+        self.units_combo = QComboBox(self)
+        self.units_combo.addItems(["Pixels", "Centimeters", "Inches"])
+        
+        # DPI
         self.dpi_label = QLabel("DPI:", self)
         self.dpi_edit = QLineEdit("150", self)
+        
+        # Color Depth
+        self.color_depth_label = QLabel("Color depth:", self)
+        self.color_depth_combo = QComboBox(self)
+        self.color_depth_combo.addItems(["24-bit color", "8-bit palette", "8-bit grayscale", "1-bit monochrome"])
+        
+        # Background Color
+        self.bg_color_button = QPushButton("Background color", self)
+        self.bg_color_button.clicked.connect(self.choose_bg_color)
+        self.bg_color_label = QLabel(self)
+        self.bg_color = QColor(Qt.white)
+        self.update_bg_color_label()
+        
+        # Buttons
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
 
+        # Layout
         self.layout.addWidget(self.width_label, 0, 0)
         self.layout.addWidget(self.width_edit, 0, 1)
+        self.layout.addWidget(self.units_combo, 0, 2)
+        
         self.layout.addWidget(self.height_label, 1, 0)
         self.layout.addWidget(self.height_edit, 1, 1)
+        
         self.layout.addWidget(self.dpi_label, 2, 0)
         self.layout.addWidget(self.dpi_edit, 2, 1)
-        self.layout.addWidget(self.buttons, 3, 0, 1, 2)
+        
+        self.layout.addWidget(self.color_depth_label, 3, 0)
+        self.layout.addWidget(self.color_depth_combo, 3, 1, 1, 2)
+        
+        self.layout.addWidget(self.bg_color_button, 4, 0)
+        self.layout.addWidget(self.bg_color_label, 4, 1, 1, 2)
+        
+        self.layout.addWidget(self.buttons, 5, 0, 1, 3)
+
+    def choose_bg_color(self):
+        color = QColorDialog.getColor(self.bg_color, self)
+        if color.isValid():
+            self.bg_color = color
+            self.update_bg_color_label()
+
+    def update_bg_color_label(self):
+        self.bg_color_label.setStyleSheet(f"background-color: {self.bg_color.name()}; border: 1px solid black;")
+        self.bg_color_label.setText(self.bg_color.name())
 
     def getImageParameters(self):
         """Return width, height, DPI, and background color."""
-        width = int(self.width_edit.text())
-        height = int(self.height_edit.text())
+        width = float(self.width_edit.text())
+        height = float(self.height_edit.text())
         dpi = int(self.dpi_edit.text())
-        return width, height, dpi, None  # Background color not implemented
+        units = self.units_combo.currentText()
+
+        if units == "Centimeters":
+            width = int(width * dpi / 2.54)
+            height = int(height * dpi / 2.54)
+        elif units == "Inches":
+            width = int(width * dpi)
+            height = int(height * dpi)
+        else: # Pixels
+            width = int(width)
+            height = int(height)
+
+        color_depth = self.color_depth_combo.currentText()
+        return width, height, dpi, self.bg_color, color_depth
 
 class AdjustmentsDialog(QDialog):
     def __init__(self, editor, parent=None):
