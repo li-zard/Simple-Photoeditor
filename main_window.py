@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QAction, QFileDialog, QDialog, QMenu, QMdiArea, QMessageBox,
     QApplication, QStatusBar, QGraphicsView, QCheckBox, QInputDialog
 )
-from PyQt5.QtGui import QIcon, QPixmap, QImage, QPen
+from PyQt5.QtGui import QIcon, QPixmap, QImage, QPen, QColor
 from PyQt5.QtCore import Qt, QRectF, QTimer
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from editor import ImageEditor, EditorContainer
@@ -385,20 +385,51 @@ class MainWindow(QMainWindow):
     def newFile(self):
         dialog = NewImageDialog(self)
         if dialog.exec_() == QDialog.Accepted:
-            width, height, dpi, bg_color = dialog.getImageParameters()
-            
-            new_image = QImage(width, height, QImage.Format_RGBA8888)
-            new_image.fill(bg_color if bg_color is not None else Qt.white)
+            width, height, dpi, bg_color, color_depth = dialog.getImageParameters()
+
+            # Determine image format from color depth
+            if color_depth == "24-bit color":
+                image_format = QImage.Format_RGB32
+            elif color_depth == "8-bit palette":
+                image_format = QImage.Format_Indexed8
+            elif color_depth == "8-bit grayscale":
+                image_format = QImage.Format_Grayscale8
+            elif color_depth == "1-bit monochrome":
+                image_format = QImage.Format_Mono
+            else:
+                image_format = QImage.Format_RGB32  # Default
+
+            new_image = QImage(width, height, image_format)
             new_image.setDotsPerMeterX(int(dpi * 39.37))
             new_image.setDotsPerMeterY(int(dpi * 39.37))
-            
+
+            # Handle background color based on format
+            if image_format == QImage.Format_Indexed8:
+                # For indexed color, we create a color table
+                color_table = [QColor(Qt.white).rgb(), QColor(Qt.black).rgb()]
+                if bg_color:
+                    color_table[0] = bg_color.rgb()
+                new_image.setColorTable(color_table)
+                new_image.fill(0) # Fill with the first color in the table
+            elif image_format == QImage.Format_Mono:
+                 # For monochrome, 0 is typically white, 1 is black.
+                new_image.setColor(0, QColor(Qt.white).rgb())
+                new_image.setColor(1, QColor(Qt.black).rgb())
+                # Fill with 0 (white) or 1 (black) depending on bg_color brightness
+                if bg_color.lightness() < 128:
+                    new_image.fill(1)
+                else:
+                    new_image.fill(0)
+            else:
+                # For other formats, fill with the selected color
+                new_image.fill(bg_color if bg_color is not None else Qt.white)
+
             sub_window = CustomMdiSubWindow(self)
             sub_window.editor_container.editor.setImage(new_image)
             sub_window.setWindowTitle(f"Untitled ({width}x{height})")
-            sub_window.file_path = None  # Убедимся, что file_path установлен
+            sub_window.file_path = None
             self.mdi_area.addSubWindow(sub_window)
             sub_window.show()
-            # Принудительно масштабируем сцену после отображения
             sub_window.editor_container.editor.fitInViewWithRulers()
 
 
