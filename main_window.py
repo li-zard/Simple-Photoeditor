@@ -920,7 +920,7 @@ class MainWindow(QMainWindow):
         QMessageBox.about(self, "About Simple Photo Editor",
             "Simple Photo Editor is a basic image editing application similar to "
             "Microsoft Photo Editor. It was created as a cross-platform alternative "
-            "using Python and PyQt5.")
+            "using Python and PyQt5. (c)Li_Zard")
 
     #test
     def setTool(self, tool_name):
