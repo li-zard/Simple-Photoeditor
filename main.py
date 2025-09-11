@@ -38,5 +38,11 @@ if __name__ == "__main__":
     window.resize(window_width, window_height)    
     window.show()
     
+    # Open file from command line argument if provided
+    if len(sys.argv) > 1:
+        file_path = sys.argv[1]
+        if os.path.isfile(file_path):
+            window.openFile(file_path)
+
     # Start the application event loop
     sys.exit(app.exec_())
