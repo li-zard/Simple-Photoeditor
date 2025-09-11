@@ -91,7 +91,7 @@ def add_recent_file(config, file_path):
 
     # Обновляем секцию RecentFiles
     config['RecentFiles'] = {f'file{i+1}': path for i, path in enumerate(recent_files)}
-    save_config(config)
+    # save_config(config) # Убираем немедленное сохранение
 
 def get_recent_files(config):
     """Получить список недавних файлов."""

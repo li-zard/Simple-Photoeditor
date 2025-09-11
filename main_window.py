@@ -22,7 +22,7 @@ except ImportError:
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, config):
         super().__init__()
         self.setWindowTitle("Simple Photo Editor")
         self.setGeometry(100, 100, 1000, 800)
@@ -32,6 +32,9 @@ class MainWindow(QMainWindow):
 
         self.statusBar().showMessage("Ready")
 
+        # --- Централизованное управление конфигурацией ---
+        self.config = config
+
         self.createActions()
         self.createMenus()
         self.createToolbars()
@@ -39,11 +42,48 @@ class MainWindow(QMainWindow):
         self.clipboard = QApplication.clipboard()
         self.selection_tool_act = QAction("Selection Tool", self, checkable=True, triggered=lambda: self.setTool("selection"))
         self.selection_tool_act.setChecked(True)
-        # Инициализируем подменю Recent Files
-        #self.update_recent_files_menu()
+        
+        # Загружаем последние настройки изображения из self.config
+        if self.config.has_section('LastImageSettings'):
+            self.last_image_settings = {
+                'width': self.config.get('LastImageSettings', 'width', fallback='800'),
+                'height': self.config.get('LastImageSettings', 'height', fallback='600'),
+                'dpi': self.config.getint('LastImageSettings', 'dpi', fallback=150),
+                'units': self.config.get('LastImageSettings', 'units', fallback='Pixels')
+            }
+        else:
+            self.last_image_settings = {
+                'width': '800',
+                'height': '600',
+                'dpi': 150,
+                'units': 'Pixels'
+            }
+        
+        self.update_recent_files_menu()
 
     def closeEvent(self, event):
-        """Handle closing of the main window."""
+        """Обработка закрытия главного окна."""
+        try:
+            # --- Единое сохранение всех настроек ---
+            # Обновляем последние настройки в self.config перед сохранением
+            if not self.config.has_section('General'):
+                self.config.add_section('General')
+            self.config.set('General', 'window_width', str(self.width()))
+            self.config.set('General', 'window_height', str(self.height()))
+
+            if not self.config.has_section('LastImageSettings'):
+                self.config.add_section('LastImageSettings')
+            self.config.set('LastImageSettings', 'width', str(self.last_image_settings['width']))
+            self.config.set('LastImageSettings', 'height', str(self.last_image_settings['height']))
+            self.config.set('LastImageSettings', 'dpi', str(self.last_image_settings['dpi']))
+            self.config.set('LastImageSettings', 'units', self.last_image_settings['units'])
+
+            # Сохраняем все изменения в файл
+            save_config(self.config)
+        except Exception as e:
+            print(f"Error saving config on close: {e}")
+
+        # Проверяем несохраненные изменения в открытых окнах
         for sub_window in self.mdi_area.subWindowList():
             if sub_window.editor_container.editor.is_modified:
                 reply = self.confirmSave(sub_window.windowTitle())
@@ -309,8 +349,7 @@ class MainWindow(QMainWindow):
     def update_recent_files_menu(self):
         """Обновить подменю Recent Files."""
         self.recent_files_menu.clear()
-        config = load_config()
-        recent_files = get_recent_files(config)
+        recent_files = get_recent_files(self.config)
         if not recent_files:
             no_files_action = QAction("No recent files", self)
             no_files_action.setEnabled(False)
@@ -383,9 +422,24 @@ class MainWindow(QMainWindow):
         return None
 
     def newFile(self):
-        dialog = NewImageDialog(self)
+        dialog = NewImageDialog(
+            self,
+            width=self.last_image_settings['width'],
+            height=self.last_image_settings['height'],
+            dpi=self.last_image_settings['dpi'],
+            units=self.last_image_settings['units']
+        )
+        
         if dialog.exec_() == QDialog.Accepted:
-            width, height, dpi, bg_color, color_depth = dialog.getImageParameters()
+            pixel_width, pixel_height, dpi, bg_color, color_depth, raw_width, raw_height, units = dialog.getImageParameters()
+
+            # Обновляем последние использованные настройки в памяти
+            self.last_image_settings = {
+                'width': raw_width,
+                'height': raw_height,
+                'dpi': dpi,
+                'units': units
+            }
 
             # Determine image format from color depth
             if color_depth == "24-bit color":
@@ -399,34 +453,30 @@ class MainWindow(QMainWindow):
             else:
                 image_format = QImage.Format_RGB32  # Default
 
-            new_image = QImage(width, height, image_format)
+            new_image = QImage(pixel_width, pixel_height, image_format)
             new_image.setDotsPerMeterX(int(dpi * 39.37))
             new_image.setDotsPerMeterY(int(dpi * 39.37))
 
             # Handle background color based on format
             if image_format == QImage.Format_Indexed8:
-                # For indexed color, we create a color table
                 color_table = [QColor(Qt.white).rgb(), QColor(Qt.black).rgb()]
                 if bg_color:
                     color_table[0] = bg_color.rgb()
                 new_image.setColorTable(color_table)
-                new_image.fill(0) # Fill with the first color in the table
+                new_image.fill(0)
             elif image_format == QImage.Format_Mono:
-                 # For monochrome, 0 is typically white, 1 is black.
                 new_image.setColor(0, QColor(Qt.white).rgb())
                 new_image.setColor(1, QColor(Qt.black).rgb())
-                # Fill with 0 (white) or 1 (black) depending on bg_color brightness
                 if bg_color.lightness() < 128:
                     new_image.fill(1)
                 else:
                     new_image.fill(0)
             else:
-                # For other formats, fill with the selected color
                 new_image.fill(bg_color if bg_color is not None else Qt.white)
 
             sub_window = CustomMdiSubWindow(self)
             sub_window.editor_container.editor.setImage(new_image)
-            sub_window.setWindowTitle(f"Untitled ({width}x{height})")
+            sub_window.setWindowTitle(f"Untitled ({pixel_width}x{pixel_height})")
             sub_window.file_path = None
             self.mdi_area.addSubWindow(sub_window)
             sub_window.show()
@@ -487,14 +537,12 @@ class MainWindow(QMainWindow):
             print("Scheduling fitInViewWithRulers...")  # Отладка
             QTimer.singleShot(100, sub_window.editor_container.editor.fitInViewWithRulers)
             self.statusBar().showMessage(f"Opened {file_name}", 2000)
-            # Добавляем файл в список недавних
-            print("Updating recent files...")  # Отладка
-            config = load_config()
-            add_recent_file(config, file_name)
-            # Обновляем меню Recent Files
+            
+            # Обновляем список недавних файлов в self.config
+            add_recent_file(self.config, file_name)
             self.update_recent_files_menu()
         else:
-            print("No file selected, exiting openFile")  # Отладка
+            print("No file selected, exiting openFile")
 
 
 
@@ -649,7 +697,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Warning", "No scanner found.")
                 return
 
-            # Диалог для выбора DPI
+            #Диалог для выбора DPI
             dpi, ok = QInputDialog.getInt(self, "Scan Settings", "Enter DPI (e.g., 150, 300, 600):",
                                            150, 75, 1200, 75)  # Мин: 75, Макс: 1200, Шаг: 75
             if not ok:

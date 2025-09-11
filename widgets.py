@@ -189,7 +189,7 @@ class CustomMdiSubWindow(QMdiSubWindow):
             event.ignore()
 '''
 class NewImageDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, width='800', height='600', dpi=150, units='Pixels'):
         """Initialize the new image dialog."""
         super().__init__(parent)
         self.setWindowTitle("New Image")
@@ -197,20 +197,21 @@ class NewImageDialog(QDialog):
         
         # Width
         self.width_label = QLabel("Width:", self)
-        self.width_edit = QLineEdit("800", self)
+        self.width_edit = QLineEdit(width, self)
         
         # Height
         self.height_label = QLabel("Height:", self)
-        self.height_edit = QLineEdit("600", self)
+        self.height_edit = QLineEdit(height, self)
         
         # Units
         self.units_label = QLabel("Units:", self)
         self.units_combo = QComboBox(self)
         self.units_combo.addItems(["Pixels", "Centimeters", "Inches"])
+        self.units_combo.setCurrentText(units)
         
         # DPI
         self.dpi_label = QLabel("DPI:", self)
-        self.dpi_edit = QLineEdit("150", self)
+        self.dpi_edit = QLineEdit(str(dpi), self)
         
         # Color Depth
         self.color_depth_label = QLabel("Color depth:", self)
@@ -259,24 +260,29 @@ class NewImageDialog(QDialog):
         self.bg_color_label.setText(self.bg_color.name())
 
     def getImageParameters(self):
-        """Return width, height, DPI, and background color."""
-        width = float(self.width_edit.text())
-        height = float(self.height_edit.text())
-        dpi = int(self.dpi_edit.text())
+        """Return processed and raw parameters."""
+        raw_width = self.width_edit.text()
+        raw_height = self.height_edit.text()
         units = self.units_combo.currentText()
+        dpi = int(self.dpi_edit.text())
+
+        width = float(raw_width)
+        height = float(raw_height)
 
         if units == "Centimeters":
-            width = int(width * dpi / 2.54)
-            height = int(height * dpi / 2.54)
+            pixel_width = int(width * dpi / 2.54)
+            pixel_height = int(height * dpi / 2.54)
         elif units == "Inches":
-            width = int(width * dpi)
-            height = int(height * dpi)
-        else: # Pixels
-            width = int(width)
-            height = int(height)
+            pixel_width = int(width * dpi)
+            pixel_height = int(height * dpi)
+        else:  # Pixels
+            pixel_width = int(width)
+            pixel_height = int(height)
 
         color_depth = self.color_depth_combo.currentText()
-        return width, height, dpi, self.bg_color, color_depth
+        # Return pixel dimensions for image creation, and raw inputs for saving config
+        return pixel_width, pixel_height, dpi, self.bg_color, color_depth, raw_width, raw_height, units
+
 
 class AdjustmentsDialog(QDialog):
     def __init__(self, editor, parent=None):

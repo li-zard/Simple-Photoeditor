@@ -20,7 +20,7 @@ if __name__ == "__main__":
     config = load_config()
 
     # Create the main window
-    window = MainWindow()
+    window = MainWindow(config)
 
     # Apply configuration settings for window size and last opened file
     if 'General' in config:
@@ -38,7 +38,5 @@ if __name__ == "__main__":
     window.resize(window_width, window_height)    
     window.show()
     
-    # Save configuration when the application closes
-    app.aboutToQuit.connect(lambda: save_config(config))
     # Start the application event loop
     sys.exit(app.exec_())
