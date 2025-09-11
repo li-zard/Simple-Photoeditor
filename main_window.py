@@ -60,6 +60,23 @@ class MainWindow(QMainWindow):
             }
         
         self.update_recent_files_menu()
+        self.setAcceptDrops(True)
+
+    def dragEnterEvent(self, event):
+        if event.mimeData().hasUrls():
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event):
+        urls = event.mimeData().urls()
+        for url in urls:
+            file_path = url.toLocalFile()
+            if os.path.isfile(file_path):
+                # Check if it's an image file
+                ext = os.path.splitext(file_path)[1].lower()
+                if ext in ['.png', '.jpg', '.jpeg', '.bmp', '.gif', '.tiff']:
+                    self.openFile(file_path)
 
     def closeEvent(self, event):
         """Обработка закрытия главного окна."""
