@@ -4,7 +4,7 @@ from PyQt5.QtWidgets import (
     QMainWindow, QAction, QFileDialog, QDialog, QMenu, QMdiArea, QMessageBox,
     QApplication, QStatusBar, QGraphicsView, QCheckBox, QInputDialog
 )
-from PyQt5.QtGui import QIcon, QPixmap, QImage, QPen, QColor
+from PyQt5.QtGui import QIcon, QKeySequence, QColor, QImage, QPixmap, QPainter, QPen
 from PyQt5.QtCore import Qt, QRectF, QTimer
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from editor import ImageEditor, EditorContainer
@@ -821,7 +821,6 @@ class MainWindow(QMainWindow):
         editor = self.currentEditor()
         if not editor:
             return
-        editor.paste()  # Уже вызывает обновлённый метод
 
         image = editor.getCurrentImage()
         if image:
