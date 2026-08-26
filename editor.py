@@ -6,16 +6,6 @@ from PyQt5.QtCore import Qt, QSizeF, QRectF, QPointF
 from PIL import Image, ImageEnhance
 
 
-#from commands import FixPasteCommand, CropCommand, TransformCommand, GrayscaleCommand, CutCommand, PasteCommand, ResizeCommand
-#from widgets import RulerWidget
-
-
-def __init__(self, parent=None):
-    super().__init__(parent)
-    from scene import ImageEditorScene
-    self.scene = ImageEditorScene(self)
-    self.setScene(self.scene)
-
 class ImageEditor(QGraphicsView):
     def __init__(self, parent=None):
         """Initialize the image editor."""
@@ -83,7 +73,7 @@ class ImageEditor(QGraphicsView):
         self.fitInViewWithRulers()
         self.scene.update()
         self.viewport().update()
-        
+
     def scrollContentsBy(self, dx, dy):
         """Update rulers during scrolling."""
         super().scrollContentsBy(dx, dy)
@@ -158,7 +148,7 @@ class ImageEditor(QGraphicsView):
         self.updateWindowTitle()
         self.scene.update()
         self.viewport().update()
-    
+
     def resizeEvent(self, event):
         """Handle resize events without resetting zoom."""
         super().resizeEvent(event)
@@ -303,45 +293,6 @@ class ImageEditor(QGraphicsView):
         from commands import TransformCommand  # Local import
         command = TransformCommand(self, horizontal_flip=horizontal)
         self.executeCommand(command)
-    '''
-    def resizeImage(self, new_width, new_height):
-        """Change size of image"""
-        if not self.current_image:
-            return
-        # Save image for Undo
-        old_image = self.current_image.copy()
-
-        # Create new image with nrew size
-        resized_image = self.current_image.scaled(new_width, new_height, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-        # Если размеры не совпадают (из-за сохранения пропорций), обрезаем изображение
-        if resized_image.width() != new_width or resized_image.height() != new_height:
-            painter = QPainter(resized_image)
-            painter.setCompositionMode(QPainter.CompositionMode_Source)
-            painter.fillRect(resized_image.rect(), Qt.transparent)
-            painter.end()
-            resized_image = resized_image.copy(0, 0, new_width, new_height)
-
-        # Обновляем текущее изображение
-        self.current_image = resized_image
-        self.image_item.setPixmap(QPixmap.fromImage(self.current_image))
-        self.scene.setSceneRect(0, 0, new_width, new_height)
-        self.image_item.setPos(0, 0)
-        self.fitInViewWithRulers()
-        self.scene.update()
-        self.viewport().update()
-        self.is_modified = True
-
-        # Ограничиваем размер стека
-        if len(self.undo_stack) > 10:  # Максимум 10 операций
-            self.undo_stack.pop(0)
-
-        # Создаём команду для Undo/Redo
-        from commands import ResizeCommand
-        command = ResizeCommand(self, old_image, self.current_image.copy())
-        self.undo_stack.append(command)
-        self.redo_stack.clear()
-    '''
-    
     def resizeImage(self, new_width, new_height, keep_aspect=True):
         """Resize the current image."""
         if not self.current_image:
@@ -365,8 +316,8 @@ class ImageEditor(QGraphicsView):
         self.undo_stack.append(command)
         self.redo_stack.clear()
         self.updateWindowTitle()
-        
-    
+
+
     def convertToGrayscale(self):
         """Convert the image to grayscale."""
         if not self.current_image:
@@ -412,7 +363,7 @@ class ImageEditor(QGraphicsView):
                 # Convert to a high-quality format with an alpha channel to preserve quality
                 clipboard_image = clipboard_image.convertToFormat(QImage.Format_ARGB32)
                 from commands import PasteCommand
-                
+
                 command = PasteCommand(self, clipboard_image)
                 self.executeCommand(command)
 
@@ -541,64 +492,7 @@ class ImageEditor(QGraphicsView):
             new_title = f"{base_title}{modified_indicator} ({width}x{height}) @ {zoom_percent}%"
             sub_window.setWindowTitle(new_title)
 
-'''
-class EditorContainer(QWidget):
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.editor = ImageEditor(self)
-        self.top_ruler = RulerWidget(editor=self.editor, orientation="horizontal", parent=self)
-        self.left_ruler = RulerWidget(editor=self.editor, orientation="vertical", parent=self)
-        self.top_ruler.setFixedHeight(self.editor.ruler_width)
-        self.left_ruler.setFixedWidth(self.editor.ruler_width)
-        self.corner_widget = QWidget(self)
-        self.corner_widget.setFixedSize(self.editor.ruler_width, self.editor.ruler_width)
-        self.corner_widget.setStyleSheet("background-color: rgb(200, 200, 200);")
-        self.layout = QGridLayout(self)
-        self.layout.setContentsMargins(0, 0, 0, 0)
-        self.layout.setSpacing(0)
-        self.layout.addWidget(self.corner_widget, 0, 0)
-        self.layout.addWidget(self.top_ruler, 0, 1)
-        self.layout.addWidget(self.left_ruler, 1, 0)
-        self.layout.addWidget(self.editor, 1, 1)
-        self.top_ruler.hide()
-        self.left_ruler.hide()
-        self.corner_widget.hide()
-        # Устанавливаем политику размеров
-        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
-    def toggleRulers(self, visible):
-        self.editor.rulers_visible = visible
-        if visible:
-            self.top_ruler.show()
-            self.left_ruler.show()
-            self.corner_widget.show()
-        else:
-            self.top_ruler.hide()
-            self.left_ruler.hide()
-            self.corner_widget.hide()
-        self.editor.fitInViewWithRulers()
-        self.updateRulerLayout()
-        self.top_ruler.update()
-        self.left_ruler.update()
-
-    def updateRulerLayout(self):
-        if not self.editor.rulers_visible:
-            return
-        container_width = self.width()
-        container_height = self.height()
-        self.top_ruler.setFixedWidth(container_width - self.editor.ruler_width)
-        self.left_ruler.setFixedHeight(container_height - self.editor.ruler_width)
-        self.top_ruler.update()
-        self.left_ruler.update()
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        self.updateRulerLayout()
-        self.editor.fitInViewWithRulers()  # Перемасштабируем при изменении размера
-
-
-'''
 class EditorContainer(QWidget):
     def __init__(self, parent=None):
         """Initialize the editor container with rulers."""

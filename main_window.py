@@ -1,5 +1,6 @@
-import sys
 import os
+import logging
+
 from PyQt5.QtWidgets import (
     QMainWindow, QAction, QFileDialog, QDialog, QMenu, QMdiArea, QMessageBox,
     QApplication, QStatusBar, QGraphicsView, QCheckBox, QInputDialog
@@ -10,7 +11,9 @@ from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from editor import ImageEditor, EditorContainer
 from widgets import CustomMdiSubWindow, NewImageDialog, AdjustmentsDialog, ResizeDialog, RotationDialog
 from commands import CropCommand
-from utils import load_config, save_config, get_recent_files, add_recent_file
+from utils import load_config, save_config, get_recent_files, add_recent_file, resource_path
+
+logger = logging.getLogger("photoeditor.main_window")
 
 try:
     from win32com.client import Dispatch
@@ -40,9 +43,7 @@ class MainWindow(QMainWindow):
         self.createToolbars()
 
         self.clipboard = QApplication.clipboard()
-        self.selection_tool_act = QAction("Selection Tool", self, checkable=True, triggered=lambda: self.setTool("selection"))
-        self.selection_tool_act.setChecked(True)
-        
+
         # Загружаем последние настройки изображения из self.config
         if self.config.has_section('LastImageSettings'):
             self.last_image_settings = {
@@ -58,7 +59,7 @@ class MainWindow(QMainWindow):
                 'dpi': 150,
                 'units': 'Pixels'
             }
-        
+
         self.update_recent_files_menu()
         self.setAcceptDrops(True)
 
@@ -98,7 +99,7 @@ class MainWindow(QMainWindow):
             # Сохраняем все изменения в файл
             save_config(self.config)
         except Exception as e:
-            print(f"Error saving config on close: {e}")
+            logger.exception("Error saving config on close: %s", e)
 
         # Проверяем несохраненные изменения в открытых окнах
         for sub_window in self.mdi_area.subWindowList():
@@ -187,10 +188,6 @@ class MainWindow(QMainWindow):
         self.crop_act = QAction("C&rop", self, shortcut="Ctrl+R", triggered=self.cropImage)
         self.crop_act.setIcon(QIcon(resource_path("icons/crop.png")))
         self.crop_act.setToolTip("Crop to Selection (Ctrl+R)")
-        # Добавляем действие Crop
-        self.crop_act = QAction("C&rop", self, shortcut="Ctrl+R", triggered=self.cropImage)
-        self.crop_act.setIcon(QIcon(resource_path("icons/crop.png")))  # Укажи путь к иконке crop.png
-        self.crop_act.setToolTip("Crop to Selection (Ctrl+R)")
 
         # Новое действие: Resize
         self.resizeAct = QAction(QIcon(resource_path("icons/resize.png")), "&Resize...", self)
@@ -222,10 +219,6 @@ class MainWindow(QMainWindow):
         self.toggle_rulers_act.setIcon(QIcon(resource_path("icons/ruler.png")))
         self.toggle_rulers_act.setToolTip("Show Rulers")
         self.toggle_rulers_act.triggered.connect(self.toggleRulers)  # Подключаем сигнал triggered
-
-        #self.toggle_rulers_act = QAction("Show &Rulers", self, checkable=True, triggered=self.toggleRulers)
-        #self.toggle_rulers_act.setIcon(QIcon(resource_path("icons/ruler.png")))  # Если нет, подбери подходящую
-        #self.toggle_rulers_act.setToolTip("Show Rulers")
 
         # Image actions
         self.rotate_90_cw_act = QAction("Rotate 90° &CW", self, triggered=lambda: self.rotateImage(90))
@@ -277,10 +270,6 @@ class MainWindow(QMainWindow):
         self.previous_act.setIcon(QIcon(resource_path("icons/previous.png")))  # Если нет, подбери подходящую
         self.previous_act.setToolTip("Previous Window (Ctrl+Shift+Tab)")
 
-        # Tools action
-        #self.selection_tool_act = QAction("Selection Tool", self, triggered=lambda: self.setTool("selection"))
-        #self.selection_tool_act.setIcon(QIcon(resource_path("icons/select.png")))
-        #self.selection_tool_act.setToolTip("Selection Tool")
         # Tools action
         self.selection_tool_act = QAction("Selection Tool", self, triggered=self.activateSelectionTool)
         self.selection_tool_act.setIcon(QIcon(resource_path("icons/select.png")))
@@ -446,7 +435,7 @@ class MainWindow(QMainWindow):
             dpi=self.last_image_settings['dpi'],
             units=self.last_image_settings['units']
         )
-        
+
         if dialog.exec_() == QDialog.Accepted:
             pixel_width, pixel_height, dpi, bg_color, color_depth, raw_width, raw_height, units = dialog.getImageParameters()
 
@@ -503,11 +492,9 @@ class MainWindow(QMainWindow):
 
     def openFile(self, file_name=None):
         """Открыть файл. Если file_name указан, открыть его напрямую, иначе показать диалог."""
-        print("MainWindow.openFile called")
-        print(f"file_name at start: {file_name}")  # Отладка
+        logger.debug("openFile called, file_name=%r", file_name)
         if file_name is None:
-            print("file_name is None, proceeding to open dialog")  # Отладка
-            print("Opening file dialog...")  # Отладка
+            logger.debug("file_name is None, showing open dialog")
             try:
                 file_name, _ = QFileDialog.getOpenFileName(
                     self,
@@ -515,51 +502,43 @@ class MainWindow(QMainWindow):
                     "",
                     "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff)"
                 )
-                print(f"File dialog returned: {file_name}")  # Отладка
+                logger.debug("File dialog returned: %r", file_name)
             except Exception as e:
-                print(f"Error opening file dialog: {e}")  # Отладка
+                logger.exception("Error opening file dialog: %s", e)
                 QMessageBox.critical(self, "Error", f"Failed to open file dialog: {e}")
                 return
-        else:
-            print(f"file_name provided: {file_name}")  # Отладка
         if file_name:
-            print(f"Checking if file exists: {file_name}")  # Отладка
             if not os.path.exists(file_name):
-                print("File does not exist")  # Отладка
+                logger.warning("File does not exist: %s", file_name)
                 QMessageBox.warning(self, "Error", f"File does not exist: {file_name}")
                 return
-            print(f"Loading image: {file_name}")  # Отладка
+            logger.debug("Loading image: %s", file_name)
             image = QImage(file_name)
             if image.isNull():
-                print("Image is null, showing error message")  # Отладка
+                logger.warning("Failed to load image (isNull): %s", file_name)
                 QMessageBox.warning(self, "Error", "Failed to open image.")
                 return
-            print("Creating subwindow...")  # Отладка
             sub_window = CustomMdiSubWindow(self)
             sub_window.editor_container.editor.setImage(image)
             sub_window.base_title = os.path.basename(file_name)
             sub_window.setWindowTitle(f"{os.path.basename(file_name)} ({image.width()}x{image.height()}) @ 100%")
             sub_window.file_path = file_name  # Сохраняем путь к файлу
-            print("Adding subwindow to MDI area...")  # Отладка
             self.mdi_area.addSubWindow(sub_window)
-            print("Showing subwindow...")  # Отладка
             sub_window.show()
 
             # Корректируем позицию окна
             viewport = self.mdi_area.viewport()
             viewport_rect = viewport.rect()
-            print("Moving subwindow to top-left...")  # Отладка
             sub_window.move(viewport_rect.topLeft())  # Перемещаем в верхний левый угол
 
-            print("Scheduling fitInViewWithRulers...")  # Отладка
             QTimer.singleShot(100, sub_window.editor_container.editor.fitInViewWithRulers)
             self.statusBar().showMessage(f"Opened {file_name}", 2000)
-            
+
             # Обновляем список недавних файлов в self.config
             add_recent_file(self.config, file_name)
             self.update_recent_files_menu()
         else:
-            print("No file selected, exiting openFile")
+            logger.debug("No file selected, openFile aborted")
 
 
 
@@ -599,7 +578,7 @@ class MainWindow(QMainWindow):
                 "PNG Files (*.png);;JPEG Files (*.jpg *.jpeg);;BMP Files (*.bmp);;GIF Files (*.gif);;TIFF Files (*.tiff);;All Files (*)",
                 "PNG Files (*.png)"  # Фильтр по умолчанию
             )
-        print(f"Saving to: {file_name}")  # Отладка
+        logger.debug("Saving to: %s", file_name)
         if file_name:
             try:
                 success = editor.current_image.save(file_name)
@@ -611,7 +590,7 @@ class MainWindow(QMainWindow):
                 self.statusBar().showMessage(f"Saved to {file_name}", 2000)
                 return True
             except Exception as e:
-                print(f"Failed to save file: {e}")  # Отладка
+                logger.exception("Failed to save file: %s", e)
                 QMessageBox.critical(self, "Error", f"Failed to save file: {e}")
                 return False
         return False
@@ -637,7 +616,7 @@ class MainWindow(QMainWindow):
             # Проверяем, есть ли расширение в имени файла
             if not os.path.splitext(file_path)[1]:  # Если расширения нет
                 file_path += ".png"  # Добавляем .png по умолчанию
-                print(f"Added .png extension: {file_path}")  # Отладка
+                logger.debug("Added .png extension: %s", file_path)
 
             if self.saveImageToFile(editor, file_path):
                 image_size = editor.getCurrentImage().size()
@@ -653,7 +632,7 @@ class MainWindow(QMainWindow):
         return False
 
     def toggleRulers(self):
-        print("MainWindow.toggleRulers called")  # Отладка
+        logger.debug("toggleRulers called")
         sub_window = self.mdi_area.activeSubWindow()
         if sub_window:
             # Переключаем состояние линеек
@@ -670,10 +649,10 @@ class MainWindow(QMainWindow):
                 if success:
                     return True
                 else:
-                    print(f"Failed to save image to {file_path}: QImage.save returned False")  # Отладка
+                    logger.warning("Failed to save image to %s: QImage.save returned False", file_path)
                     return False
             except Exception as e:
-                print(f"Failed to save image to {file_path}: {e}")  # Отладка
+                logger.exception("Failed to save image to %s: %s", file_path, e)
                 return False
         return False
 
@@ -920,21 +899,3 @@ class MainWindow(QMainWindow):
             "Simple Photo Editor is a basic image editing application similar to "
             "Microsoft Photo Editor. It was created as a cross-platform alternative "
             "using Python and PyQt5. (c)Li_Zard")
-
-    #test
-    def setTool(self, tool_name):
-            editor = self.currentEditor()
-            if editor:
-                editor.scene.current_tool = tool_name
-                self.statusBar().showMessage("Selection tool active: Click and drag to select an area")
-                editor.setDragMode(QGraphicsView.NoDrag)
-
-
-def resource_path(relative_path):
-    """Get the absolute path to a resource, works for development and PyInstaller."""
-    if getattr(sys, 'frozen', False):  # If App running as .exe
-        base_path = sys._MEIPASS  # Resource folder of PyInstaller
-    else:
-        base_path = os.path.abspath(".")  # If running from py
-
-    return os.path.join(base_path, relative_path)

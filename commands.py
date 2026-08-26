@@ -1,3 +1,5 @@
+import logging
+
 import numpy as np
 from PyQt5.QtWidgets import QApplication, QGraphicsItem, QMessageBox
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QTransform
@@ -13,11 +15,13 @@ try:
 except ImportError:
     CV2_AVAILABLE = False
 
+logger = logging.getLogger("photoeditor.commands")
+
 class Command:
     def execute(self):
         """Execute the command."""
         pass
-    
+
     def undo(self):
         """Undo the command."""
         pass
@@ -31,20 +35,18 @@ class CropCommand(Command):
 
     def execute(self):
         """Crop the image to the specified rectangle."""
-        from widgets import CustomMdiSubWindow
         self.cropped_image = self.original_image.copy(self.rect)
         self.editor.setImage(self.cropped_image)
         self.editor.window().statusBar().showMessage(f"Image cropped to {self.rect.width()}x{self.rect.height()}", 2000)
 
     def redo(self):
-        self.execute() 
-        
+        self.execute()
+
     def undo(self):
         """Restore the original image."""
-        from widgets import CustomMdiSubWindow
         self.editor.setImage(self.original_image)
         self.editor.window().statusBar().showMessage("Crop undone", 2000)
-        
+
 class AdjustmentsCommand(Command):
     def __init__(self, editor, brightness, contrast, gamma, autobalance=False, original_image_override=None):
         self.editor = editor
@@ -119,10 +121,10 @@ class AdjustmentsCommand(Command):
 
         self.adjusted_image = QImage(pil_img.tobytes(), image.width(), image.height(), image.bytesPerLine(), QImage.Format_RGB32)
         self.editor.setImage(self.adjusted_image)
-    
+
     def redo(self):
         self.execute()  # Повторяем действия execute
- 
+
     def undo(self):
         """Restore the original image."""
         self.editor.setImage(self.original_image)
@@ -168,24 +170,24 @@ class GrayscaleCommand(Command):
         if not CV2_AVAILABLE:
             QMessageBox.warning(self.editor.window(), "Error", "OpenCV (cv2) is not installed. Please install it to use the Grayscale feature.")
             return
-        print("Executing GrayscaleCommand")  # Отладка
+        logger.debug("Executing GrayscaleCommand")
         # Конвертируем изображение в нужный формат
         image = self.original_image.convertToFormat(QImage.Format_RGBA8888)
         width = image.width()
         height = image.height()
-        print(f"Image size: {width}x{height}, Format: {image.format()}")  # Отладка
+        logger.debug("Image size: %dx%d, Format: %s", width, height, image.format())
         ptr = image.bits()
         ptr.setsize(height * width * 4)
         arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 4))
-        print("Converting to grayscale...")  # Отладка
+        logger.debug("Converting to grayscale...")
         gray = cv2.cvtColor(arr, cv2.COLOR_RGBA2GRAY)
         gray_rgb = cv2.cvtColor(gray, cv2.COLOR_GRAY2RGBA)
         self.grayscale_image = QImage(gray_rgb.data, width, height, gray_rgb.strides[0], QImage.Format_RGBA8888)
         if self.grayscale_image.isNull():
-            print("Error: Grayscale image is null")  # Отладка
+            logger.error("Grayscale image is null")
             QMessageBox.warning(self.editor.window(), "Error", "Failed to convert image to grayscale.")
             return
-        print("Setting grayscale image")  # Отладка
+        logger.debug("Setting grayscale image")
         self.editor.setImage(self.grayscale_image)
         self.editor.window().statusBar().showMessage("Converted to grayscale", 2000)
 

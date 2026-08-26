@@ -1,7 +1,11 @@
 import configparser
+import logging
 import os
 import sys
+
 import appdirs
+
+logger = logging.getLogger("photoeditor.utils")
 
 
 def get_user_config_path():
@@ -24,34 +28,34 @@ def load_config():
     config = configparser.ConfigParser()
     # Сначала пытаемся загрузить из пользовательской директории
     user_config_path = get_user_config_path()
-    #print(f"User config path: {user_config_path}")  # Отладка
+    logger.debug("User config path: %s", user_config_path)
     if os.path.exists(user_config_path):
-        #print("Loading user config...")  # Отладка
+        logger.debug("Loading user config...")
         config.read(user_config_path)
     else:
         # Если пользовательского файла нет, пытаемся загрузить из ресурсов
         default_config_path = resource_path("config.ini")
-        #print(f"Default config path: {default_config_path}")  # Отладка
+        logger.debug("Default config path: %s", default_config_path)
         if os.path.exists(default_config_path):
-            #print("Loading default config...")  # Отладка
+            logger.debug("Loading default config...")
             config.read(default_config_path)
 
         # Добавляем секции, если их нет
         if 'General' not in config:
-            #print("Adding default General section...")  # Отладка
+            logger.debug("Adding default General section...")
             config['General'] = {
                 'theme': 'dark',
                 'window_width': '800',
                 'window_height': '600'
             }
         if 'Editor' not in config:
-            #print("Adding default Editor section...")  # Отладка
+            logger.debug("Adding default Editor section...")
             config['Editor'] = {
                 'default_zoom': '1.0',
                 'show_rulers': 'true'
             }
         if 'RecentFiles' not in config:
-            #print("Adding default RecentFiles section...")  # Отладка
+            logger.debug("Adding default RecentFiles section...")
             config['RecentFiles'] = {}
         # Сохраняем в пользовательскую директорию
         save_config(config)
@@ -60,12 +64,12 @@ def load_config():
 def save_config(config):
     """Сохранить настройки в config.ini в пользовательской директории"""
     config_path = get_user_config_path()  # Используем ту же директорию, что и в load_config
-    #print(f"Saving config to: {config_path}")  # Отладка
+    logger.debug("Saving config to: %s", config_path)
     try:
         with open(config_path, 'w') as configfile:
             config.write(configfile)
     except Exception as e:
-        print(f"Failed to save config: {e}")  # Отладка
+        logger.exception("Failed to save config: %s", e)
 
 
 def add_recent_file(config, file_path):
@@ -91,7 +95,7 @@ def add_recent_file(config, file_path):
 
     # Обновляем секцию RecentFiles
     config['RecentFiles'] = {f'file{i+1}': path for i, path in enumerate(recent_files)}
-    # save_config(config) # Убираем немедленное сохранение
+    # Примечание: сохранение отложено до закрытия приложения (см. MainWindow.closeEvent)
 
 def get_recent_files(config):
     """Получить список недавних файлов."""
