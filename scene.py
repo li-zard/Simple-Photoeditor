@@ -1,7 +1,6 @@
 from PyQt5.QtWidgets import QGraphicsScene, QGraphicsRectItem, QGraphicsPixmapItem
 from PyQt5.QtGui import QColor, QPen, QCursor, QTransform, QPainter
 from PyQt5.QtCore import Qt, QRectF, QSizeF, QPointF, QTimer, pyqtSignal
-from editor import ImageEditor  # Импорт из editor.py
 
 class ImageEditorScene(QGraphicsScene):
     selectionChanged = pyqtSignal(QRectF)

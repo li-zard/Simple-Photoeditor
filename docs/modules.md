@@ -12,23 +12,27 @@ The application bootstrap script. Runs only under `if __name__ == "__main__":`.
 
 1. Configure logging: level from the `PHOTOEDITOR_LOGLEVEL` environment variable (default `WARNING`), format `время уровень [имя] сообщение`.
 2. Create [`QApplication(sys.argv)`](../main.py) and set the window icon from `icons/icon.ico` (resolved via [`resource_path()`](../utils.py)).
-3. Load configuration with [`load_config()`](../utils.py).
-4. Instantiate [`MainWindow(config)`](../main_window.py).
-5. Read persisted window geometry from the `General` section (`window_width`, `window_height`, defaulting to 800×600) and resize the window.
-6. Show the window.
-7. If a command-line argument was supplied and it is an existing file, open it immediately via [`window.openFile(file_path)`](../main_window.py).
-8. Enter the Qt event loop with `app.exec_()`.
+4. Enable High-DPI attributes (`AA_EnableHighDpiScaling`, `AA_UseHighDpiPixmaps`) **before** creating the application — without them the UI (including MDI title bars) renders small and gets stretched blurry on scaled displays.
+5. Load configuration with [`load_config()`](../utils.py).
+6. Initialize the theme via [`theme.init_theme(app, config)`](../theme.py) (`General.theme`: `system`/`light` → system palette, `dark` → dark palette + inverted icons).
+7. Instantiate [`MainWindow(config)`](../main_window.py).
+8. Read persisted window geometry from the `General` section (`window_width`, `window_height`, defaulting to 800×600) and resize the window.
+9. Show the window.
+10. Open the initial image via [`window.openFile(path)`](../main_window.py): a command-line argument if one was given and exists, otherwise `General.last_opened_file` from the previous session (when the file still exists).
+11. Enter the Qt event loop with `app.exec_()`.
 
 ### CLI usage
 
 ```bash
-python main.py                    # start with an empty workspace
+python main.py                    # reopens General.last_opened_file, if any
 python main.py picture.png        # start and open picture.png
 ```
 
 ---
 
 ## 2. [`main_window.py`](../main_window.py) — Main Application Window
+
+> All action icons are created through [`theme.icon(name)`](../theme.py) (each action also gets `objectName = "act_icon_<name>"`), so icons re-render — inverted in the dark theme — on live theme switches.
 
 ### `MainWindow(QMainWindow)`
 
@@ -52,7 +56,7 @@ Sets title *"Simple Photo Editor"*, geometry 100,100,1000×800, creates the MDI 
 #### Window events
 
 - [`dragEnterEvent()`](../main_window.py) / [`dropEvent()`](../main_window.py) — accept file URLs; image extensions (`.png .jpg .jpeg .bmp .gif .tiff`) are opened via [`openFile()`](../main_window.py).
-- [`closeEvent()`](../main_window.py) — persists `General.window_width/height` and all `LastImageSettings` values, calls [`save_config()`](../utils.py), then iterates all MDI sub-windows; for each modified image shows a Save/Discard/Cancel prompt ([`confirmSave()`](../main_window.py)). Cancel aborts the shutdown.
+- [`closeEvent()`](../main_window.py) — persists `General.window_width/height`, `General.last_opened_file` (the active sub-window's path), `Editor.show_rulers` (the active editor's ruler state), and all `LastImageSettings` values, calls [`save_config()`](../utils.py), then iterates all MDI sub-windows; for each modified image shows a Save/Discard/Cancel prompt ([`confirmSave()`](../main_window.py)). Cancel aborts the shutdown.
 
 #### Actions, menus, toolbars
 
@@ -63,12 +67,13 @@ Sets title *"Simple Photo Editor"*, geometry 100,100,1000×800, creates the MDI 
 | File | New (Ctrl+N), Open (Ctrl+O), Save (Ctrl+S), Save As (Ctrl+Shift+S), Print (Ctrl+P), Scan (Ctrl+Shift+N), Exit (Ctrl+Q) |
 | Edit | Undo (Ctrl+Z), Redo (Ctrl+Y), Cut (Ctrl+X), Copy (Ctrl+C), Paste (Ctrl+V), Crop (Ctrl+R), Select All (Ctrl+A) |
 | View | Zoom In (Ctrl++), Zoom Out (Ctrl+-), Fit to Screen (Ctrl+0), Actual Size (Ctrl+1), Show Rulers |
+| Settings | Theme → System / Light / Dark (radio group) |
 | Image | Rotate 90° CW / CCW / 180°, Rotate… (precise), Crop, Resize…, Flip Horizontal/Vertical, Grayscale, Adjustments… |
 | Window | Tile, Cascade, Next (Ctrl+Tab), Previous (Ctrl+Shift+Tab) |
 | Tools | Selection Tool |
 | Help | About |
 
-[`createMenus()`](../main_window.py) arranges these into File / Edit / View / Image (with **Rotate** and **Flip** submenus) / Window / Help menus and inserts the Recent Files submenu into File.
+[`createMenus()`](../main_window.py) arranges these into File / Edit / View / Image (with **Rotate** and **Flip** submenus) / Settings (with the **Theme** radio submenu) / Window / Help menus and inserts the Recent Files submenu into File.
 
 [`createToolbars()`](../main_window.py) builds five icon-only toolbars: File, Edit, View, Image, Tools.
 
@@ -102,9 +107,14 @@ Handlers with local logic:
 - [`activateSelectionTool()`](../main_window.py) / [`setTool(name)`](../main_window.py) — set `scene.current_tool` and switch the view's drag mode to `NoDrag`.
 - [`about()`](../main_window.py) — "About" message box.
 
+#### Theme switching
+
+- [`switchTheme(theme_name)`](../main_window.py) — live-switches the theme via [`theme.apply_theme()`](../theme.py), persists `General.theme` immediately, and refreshes the menu check marks.
+- [`update_theme_menu_actions()`](../main_window.py) — syncs the Settings → Theme radio group with the config value.
+
 #### Module-level helper
 
-Icons and other resources are resolved via [`resource_path()`](../utils.py) imported from [`utils.py`](../utils.py) — see [Utilities layer](#7-utilspy--utilities).
+Icons and other resources are resolved via [`resource_path()`](../utils.py) imported from [`utils.py`](../utils.py) — see [Utilities layer](#9-utilspy--utilities). Action icons go through [`theme.icon()`](../theme.py) instead, which adds dark-theme inversion and caching.
 
 ---
 
@@ -143,7 +153,7 @@ Antialiasing + smooth pixmap transform rendering, `ScrollHandDrag` mode, full vi
 
 #### Command execution & history
 
-- [`executeCommand(command)`](../editor.py) — runs `command.execute()`, appends to `undo_stack`, clears `redo_stack`, sets `is_modified = True`.
+- [`executeCommand(command)`](../editor.py) — runs `command.execute()`, appends to `undo_stack`, clears `redo_stack`, sets `is_modified = True`, then trims the stack to the class constant `UNDO_LIMIT` (20 commands, oldest dropped) to bound memory use.
 - [`undo()`](../editor.py) / [`redo()`](../editor.py) — move a command between the stacks and invoke its `undo()`/`redo()`; update the modified flag, window title, scene, and viewport.
 
 #### Zoom & navigation
@@ -159,7 +169,7 @@ Antialiasing + smooth pixmap transform rendering, `ScrollHandDrag` mode, full vi
 
 - [`rotateImage(degrees)`](../editor.py) — builds a [`TransformCommand`](../commands.py) from a fresh copy of the current image.
 - [`flipImage(horizontal=True)`](../editor.py) — `TransformCommand` with `horizontal_flip`.
-- [`resizeImage(new_width, new_height, keep_aspect=True)`](../editor.py) — scales via `QImage.scaled` (`KeepAspectRatio` or `IgnoreAspectRatio`, smooth transform), updates scene rect, pushes a [`ResizeCommand`](../commands.py); caps the undo stack at 10 entries.
+- [`resizeImage(new_width, new_height, keep_aspect=True)`](../editor.py) — builds a [`ResizeCommand`](../commands.py) and runs it through [`executeCommand()`](../editor.py); the scaling itself happens inside the command's `execute()`.
 - [`convertToGrayscale()`](../editor.py) — pushes a [`GrayscaleCommand`](../commands.py).
 - [`cut(fill_color=None)`](../editor.py) — pushes a [`CutCommand`](../commands.py) with an optional fill color (white by default).
 - [`paste()`](../editor.py) — reads the clipboard image, converts to `ARGB32`, pushes a [`PasteCommand`](../commands.py).
@@ -168,13 +178,13 @@ Antialiasing + smooth pixmap transform rendering, `ScrollHandDrag` mode, full vi
 
 - [`start_preview()`](../editor.py) — snapshots `current_image` into `image_before_preview`.
 - [`preview_rotation(angle)`](../editor.py) — shows a rotated preview without touching history.
-- [`preview_adjustments(brightness, contrast, gamma, autobalance)`](../editor.py) — applies the same pipeline as [`AdjustmentsCommand.execute()`](../commands.py) (autobalance via per-channel histogram stretching with a 5% threshold, PIL `ImageEnhance` brightness/contrast, and a true power-curve gamma via a NumPy LUT `((px/255) ** (1/gamma)) * 255`) directly to the display.
+- [`preview_adjustments(brightness, contrast, gamma, autobalance)`](../editor.py) — calls [`apply_adjustments_pipeline()`](../imageops.py) — the exact code path used by [`AdjustmentsCommand.execute()`](../commands.py) — on the pre-preview snapshot and shows the result without touching history.
 - [`apply_rotation(degrees)`](../editor.py) / [`apply_adjustments(...)`](../editor.py) — commit the dialog result as a real command based on the pre-preview snapshot, then clear it.
 - [`cancel_preview()`](../editor.py) — restores the snapshot.
 
 #### Pasted items
 
-- [`fixPastedItems()`](../editor.py) — bakes all floating items into `current_image` with a `QPainter`, removes them from the scene, and records a [`FixPasteCommand`](../commands.py).
+- [`fixPastedItems()`](../editor.py) — builds a [`FixPasteCommand`](../commands.py) over the current floating items and runs it through [`executeCommand()`](../editor.py); the baking itself happens inside the command's `execute()`.
 - [`applyAllPastedItems()`](../editor.py) — same, via [`scene.fixMovableItem()`](../scene.py); called before saving.
 - [`mousePressEvent()`](../editor.py) — clicking empty space (no selected items) while floating items exist triggers [`fixPastedItems()`](../editor.py).
 
@@ -248,7 +258,7 @@ A floating pasted image:
 
 ## 5. [`commands.py`](../commands.py) — Command Pattern
 
-Module constant: `CV2_AVAILABLE` — whether OpenCV imported successfully (grayscale requires it).
+Module constant: `CV2_AVAILABLE` — whether OpenCV imported successfully (grayscale requires it). The shared corrections pipeline is imported from [`imageops.py`](../imageops.py).
 
 ### `Command` (base)
 
@@ -264,12 +274,12 @@ Interface with no-op [`execute()`](../commands.py), [`undo()`](../commands.py); 
 | [`GrayscaleCommand(editor)`](../commands.py) | Snapshot | Converts to `RGBA8888`, `cv2.cvtColor(RGBA2GRAY)` then back to RGBA; warns if cv2 missing | Restore snapshot / re-execute |
 | [`PasteCommand(editor, clipboard_image)`](../commands.py) | Snapshot, selection rect, prior pasted items | With selection: paints the clipboard image at the selection's top-left. Without: creates a [`MovableImageItem`](../scene.py) at (10, 10), fixes any currently selected floating items first, selects the new item | Selection case: restore snapshot. Floating case: remove item, restore prior items and snapshot |
 | [`CutCommand(editor, fill_color=None)`](../commands.py) | Snapshot, selection rect | Copies the region to the clipboard, fills it with `fill_color` (white by default), removes selection + handles | Restore snapshot |
-| [`ResizeCommand(editor, old_image, new_image)`](../commands.py) | Both images | — (applied by the editor) | `undo()`/`redo()` swap `current_image`, pixmap, scene rect, and refit the view |
-| [`FixPasteCommand(editor, old_image, new_image, pasted_items)`](../commands.py) | Images, items, positions | — (applied by the editor) | `undo()` restores the old image and re-adds the floating items at their positions; `redo()` bakes the new image and removes the items |
+| [`ResizeCommand(editor, new_width, new_height, keep_aspect=True)`](../commands.py) | Target size; `old_image` is snapshotted lazily on first `execute()` | Scales the current image via `QImage.scaled` (smooth; `KeepAspectRatio`/`IgnoreAspectRatio` from `keep_aspect`) and applies it through `_apply()` ([`setImage()`](../editor.py) + `fitInViewWithRulers`) | `undo()` re-applies `old_image`; `redo()` re-applies `new_image` — both refit the view |
+| [`FixPasteCommand(editor, pasted_items)`](../commands.py) | The floating items and their positions; `old_image` is snapshotted lazily on first `execute()` | Bakes every item's pixmap into `current_image` with a `QPainter`, removes the items from the scene and from `editor.pasted_items` | `undo()` restores the old image and re-adds the items at their recorded positions; `redo()` re-runs `execute()` |
 
 Design notes:
 
-- Every command snapshots the image **at construction time**, so undo is O(1) image swap.
+- Most commands snapshot the image **at construction time**, so undo is O(1) image swap. The exceptions are `ResizeCommand` and `FixPasteCommand`, which capture `old_image` lazily on the first `execute()` (Roadmap stage 3 contract: all mutation happens inside `execute()`).
 - `original_image_override` lets the live-preview dialogs pass the pre-preview snapshot so that committing a dialog result doesn't double-apply previewed changes.
 - Status-bar feedback is emitted from inside commands via `editor.window().statusBar()`.
 
@@ -277,7 +287,46 @@ Full behavior contracts are described in [Undo/Redo System](undo-redo.md).
 
 ---
 
-## 6. [`widgets.py`](../widgets.py) — Custom Widgets & Dialogs
+## 6. [`imageops.py`](../imageops.py) — Shared Image-Processing Pipeline
+
+A leaf module (imports only NumPy, PyQt5, and Pillow), introduced during Roadmap stage 3 to deduplicate ~100 lines of corrections code that previously existed in parallel copies in `commands.py` and `editor.py`.
+
+### `apply_adjustments_pipeline(image, brightness=0.0, contrast=0.0, gamma=1.0, autobalance=False)`
+
+Applies the corrections chain to a `QImage` and returns a **new** `QImage`; the input is never modified and the result is an independent copy in `Format_RGBA8888` (whose in-memory byte order R,G,B,A is platform-independent):
+
+1. Convert to `Format_RGBA8888`.
+2. `autobalance` — per-channel histogram stretching with a 5% clip threshold ([`_autobalance_rgba8888()`](../imageops.py)); the alpha channel is untouched.
+3. Brightness / contrast — PIL `ImageEnhance` with factor `1.0 + value`.
+4. Gamma — true power curve `((px/255) ** (1/gamma)) * 255` through a 256-entry NumPy LUT ([`_apply_gamma()`](../imageops.py)); alpha untouched.
+
+Callers: [`AdjustmentsCommand.execute()`](../commands.py) (commit) and [`ImageEditor.preview_adjustments()`](../editor.py) (live preview) — a single implementation guarantees that the preview matches the committed result.
+
+### Conversion helpers
+
+- [`_qimage_to_ndarray_rgba(qimg)`](../imageops.py) — `QImage` → `ndarray (h, w, 4)`, dropping per-line padding.
+- [`_qimage_to_pil(qimg)`](../imageops.py) / [`_pil_to_qimage(pil_img)`](../imageops.py) — lossless QImage ↔ PIL round-trip pinned to RGBA.
+
+---
+
+## 7. [`theme.py`](../theme.py) — Theme Management
+
+Global theme state (light / dark; `system` resolves to light) with live switching and dark-aware icons.
+
+### Functions
+
+- [`init_theme(app, config)`](../theme.py) — startup entry point; reads `General.theme` and delegates to `apply_theme()`.
+- [`apply_theme(app, name)`](../theme.py) — switches the `QApplication` palette (dark palette built by [`_dark_palette()`](../theme.py), light = the style's standard palette), then refreshes every action icon via [`_refresh_all_icons()`](../theme.py) and repaints all top-level widgets.
+- [`icon(name)`](../theme.py) — returns a `QIcon` for `icons/<name>.png`; in the dark theme the pixels are inverted by [`_invert_image()`](../theme.py) (RGB → `255 - v`, alpha untouched) so dark icons stay readable on a dark background. Results are cached per `(name, theme)`.
+- [`current_theme()`](../theme.py) / [`is_dark()`](../theme.py) — accessors for the global state.
+
+### Icon refresh mechanism
+
+Every themed action carries `objectName = "act_icon_<name>"` (set in [`createActions()`](../main_window.py)); on a theme switch `_refresh_all_icons()` walks all top-level widgets, finds these actions, and re-set their icons — no restart needed.
+
+---
+
+## 8. [`widgets.py`](../widgets.py) — Custom Widgets & Dialogs
 
 ### `RulerWidget(QWidget)`
 
@@ -295,7 +344,7 @@ Renders one ruler beside the editor.
 
 MDI child window:
 
-- Constructor stores `main_window`, creates an [`EditorContainer`](../editor.py) as its widget, sets minimum size 200×150, and sizes itself to the MDI viewport minus a 50 px margin.
+- Constructor stores `main_window`, creates an [`EditorContainer`](../editor.py) as its widget, sets minimum size 200×150, and sizes itself to the MDI viewport minus a 50 px margin. It then applies the persisted `Editor.show_rulers` config value: when `true`, rulers are toggled on for the new sub-window via [`EditorContainer.toggleRulers()`](../editor.py).
 - [`closeEvent()`](../widgets.py) — when the editor `is_modified`, asks Save/Discard/Cancel; Save delegates to [`main_window.saveFile()`](../main_window.py) and cancels closing on failure.
 
 ### `NewImageDialog(QDialog)`
@@ -332,7 +381,7 @@ Precise rotation with live preview:
 
 ---
 
-## 7. [`utils.py`](../utils.py) — Utilities
+## 9. [`utils.py`](../utils.py) — Utilities
 
 ### Configuration
 
@@ -353,7 +402,7 @@ See [Configuration](configuration.md) for the full INI schema.
 
 ---
 
-## 8. Cross-Module Interactions Summary
+## 10. Cross-Module Interactions Summary
 
 | Interaction | Mechanism |
 |-------------|-----------|
@@ -361,6 +410,7 @@ See [Configuration](configuration.md) for the full INI schema.
 | Selection → status bar | `ImageEditorScene.selectionChanged` signal → `ImageEditor.updateStatusBar` slot |
 | Dialog → live preview | Dialog widgets → `ImageEditor.preview_*` methods (snapshot-based) |
 | Dialog → commit | Dialog → `ImageEditor.apply_*` → `Command` → `executeCommand()` |
+| Shared corrections pipeline | `AdjustmentsCommand.execute()` and `ImageEditor.preview_adjustments()` both call `imageops.apply_adjustments_pipeline()` |
 | Floating paste → baked | Scene/editor mouse events → `fixMovableItem()` / `fixPastedItems()` → `FixPasteCommand` |
 | Close → save prompt | `CustomMdiSubWindow.closeEvent` / `MainWindow.closeEvent` → `confirmSave()` → `saveFile()` |
 | Config lifecycle | `main.py` load → `MainWindow` mutations → `closeEvent` → `save_config()` |

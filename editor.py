@@ -3,7 +3,6 @@ import numpy as np
 from PyQt5.QtWidgets import QGraphicsView, QGraphicsPixmapItem, QApplication, QWidget, QGridLayout
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QTransform
 from PyQt5.QtCore import Qt, QSizeF, QRectF, QPointF
-from PIL import Image, ImageEnhance
 
 
 class ImageEditor(QGraphicsView):
@@ -88,12 +87,19 @@ class ImageEditor(QGraphicsView):
         if self.rulers_visible:
             self.parent().updateRulerLayout()
 
+    # Максимальная глубина истории (полный снапшот QImage на команду ~48 МБ
+    # для 4000×3000, поэтому ограничиваем общий размер стека)
+    UNDO_LIMIT = 20
+
     def executeCommand(self, command):
         """Execute a command and add it to the undo stack."""
         command.execute()
         self.undo_stack.append(command)
         self.redo_stack.clear()
         self.is_modified = True
+        # Ограничение памяти: вытесняем самые старые команды
+        while len(self.undo_stack) > self.UNDO_LIMIT:
+            self.undo_stack.pop(0)
 
     def mouseMoveEvent(self, event):
         """Handle mouse movement for cursor tracking."""
@@ -110,27 +116,12 @@ class ImageEditor(QGraphicsView):
             self.fixPastedItems()
 
     def fixPastedItems(self):
-        """Fix all pasted items onto the canvas."""
+        """Fix all pasted items onto the canvas (через FixPasteCommand → executeCommand)."""
         if not self.pasted_items:
             return
-        old_image = self.current_image.copy()
-        painter = QPainter(self.current_image)
-        painter.setRenderHint(QPainter.Antialiasing)
-        painter.setRenderHint(QPainter.SmoothPixmapTransform)
-        for item in self.pasted_items:
-            pos = item.pos()
-            pixmap = item.pixmap()
-            painter.drawPixmap(int(pos.x()), int(pos.y()), pixmap)
-            self.scene.removeItem(item)
-        painter.end()
-        self.image_item.setPixmap(QPixmap.fromImage(self.current_image))
-        self.scene.update()
-        self.viewport().update()
         from commands import FixPasteCommand
-        command = FixPasteCommand(self, old_image, self.current_image.copy(), self.pasted_items[:])
-        self.undo_stack.append(command)
-        self.redo_stack.clear()
-        self.pasted_items.clear()
+        command = FixPasteCommand(self, self.pasted_items[:])
+        self.executeCommand(command)
 
     def leaveEvent(self, event):
         """Handle cursor leaving the widget."""
@@ -302,27 +293,12 @@ class ImageEditor(QGraphicsView):
         command = TransformCommand(self, horizontal_flip=horizontal)
         self.executeCommand(command)
     def resizeImage(self, new_width, new_height, keep_aspect=True):
-        """Resize the current image."""
+        """Resize the current image (через ResizeCommand → executeCommand)."""
         if not self.current_image:
             return
-        old_image = self.current_image.copy()
-        # Выбираем режим масштабирования в зависимости от keep_aspect
-        aspect_mode = Qt.KeepAspectRatio if keep_aspect else Qt.IgnoreAspectRatio
-        resized_image = self.current_image.scaled(new_width, new_height, aspect_mode, Qt.SmoothTransformation)
-        self.current_image = resized_image
-        self.image_item.setPixmap(QPixmap.fromImage(self.current_image))
-        self.scene.setSceneRect(0, 0, new_width, new_height)
-        self.image_item.setPos(0, 0)
-        self.fitInViewWithRulers()
-        self.scene.update()
-        self.viewport().update()
-        self.is_modified = True
-        if len(self.undo_stack) > 10:
-            self.undo_stack.pop(0)
         from commands import ResizeCommand
-        command = ResizeCommand(self, old_image, self.current_image.copy())
-        self.undo_stack.append(command)
-        self.redo_stack.clear()
+        command = ResizeCommand(self, new_width, new_height, keep_aspect)
+        self.executeCommand(command)
         self.updateWindowTitle()
 
 
@@ -411,66 +387,14 @@ class ImageEditor(QGraphicsView):
 
     def preview_adjustments(self, brightness, contrast, gamma, autobalance):
         if self.image_before_preview and self.image_item:
-            image = self.image_before_preview.copy()
-            if autobalance:
-                width, height = image.width(), image.height()
-                ptr = image.bits()
-                ptr.setsize(height * width * 4)
-                img_array = np.frombuffer(ptr, dtype=np.uint8).reshape(height, width, 4).copy()
-
-                r_hist = np.histogram(img_array[:, :, 2], bins=256, range=(0, 256))[0]
-                g_hist = np.histogram(img_array[:, :, 1], bins=256, range=(0, 256))[0]
-                b_hist = np.histogram(img_array[:, :, 0], bins=256, range=(0, 256))[0]
-                total_pixels = width * height
-                threshold = total_pixels * 0.05
-
-                def find_bounds(hist):
-                    low, high = 0, 255
-                    count = 0
-                    for i, val in enumerate(hist):
-                        count += val
-                        if count > threshold:
-                            low = i
-                            break
-                    count = 0
-                    for i, val in enumerate(hist[::-1]):
-                        count += val
-                        if count > threshold:
-                            high = 255 - i
-                            break
-                    if low >= high:
-                        high = low + 1 if low < 255 else 255
-                        low = high - 1 if high > 0 else 0
-                    return low, high
-
-                r_low, r_high = find_bounds(r_hist)
-                g_low, g_high = find_bounds(g_hist)
-                b_low, b_high = find_bounds(b_hist)
-
-                r_range = max(r_high - r_low, 1)
-                g_range = max(g_high - g_low, 1)
-                b_range = max(b_high - b_low, 1)
-
-                img_array[:, :, 2] = np.clip((img_array[:, :, 2].astype(np.float32) - r_low) * 255 / r_range, 0, 255).astype(np.uint8)
-                img_array[:, :, 1] = np.clip((img_array[:, :, 1].astype(np.float32) - g_low) * 255 / g_range, 0, 255).astype(np.uint8)
-                img_array[:, :, 0] = np.clip((img_array[:, :, 0].astype(np.float32) - b_low) * 255 / b_range, 0, 255).astype(np.uint8)
-
-                image = QImage(img_array.tobytes(), width, height, image.bytesPerLine(), QImage.Format_RGB32)
-
-            pil_img = Image.frombytes("RGBA", (image.width(), image.height()), image.bits().asstring(image.byteCount()))
-            if brightness != 0:
-                enhancer = ImageEnhance.Brightness(pil_img)
-                pil_img = enhancer.enhance(1.0 + brightness)
-            if contrast != 0:
-                enhancer = ImageEnhance.Contrast(pil_img)
-                pil_img = enhancer.enhance(1.0 + contrast)
-            if gamma != 1.0:
-                # Настоящая гамма: степенная кривая ((px / 255) ** (1 / gamma)) * 255 через LUT
-                inv_gamma = 1.0 / gamma
-                lut = ((np.arange(256, dtype=np.float32) / 255.0) ** inv_gamma * 255.0 + 0.5).astype(np.uint8)
-                pil_img = pil_img.point(lut.tolist() * 4)  # RGBA: одна кривая на все каналы (альфа 255 → 255)
-
-            preview_image = QImage(pil_img.tobytes(), image.width(), image.height(), image.bytesPerLine(), QImage.Format_RGB32)
+            from imageops import apply_adjustments_pipeline
+            preview_image = apply_adjustments_pipeline(
+                self.image_before_preview,
+                brightness=brightness,
+                contrast=contrast,
+                gamma=gamma,
+                autobalance=autobalance,
+            )
             self.current_image = preview_image
             self.image_item.setPixmap(QPixmap.fromImage(self.current_image))
             self.scene.update()

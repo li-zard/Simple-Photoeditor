@@ -8,13 +8,16 @@ import logging
 import os
 import sys
 
+from PyQt5.QtCore import Qt
 from PyQt5.QtGui import QIcon
 from PyQt5.QtWidgets import QApplication
 
 from main_window import MainWindow
 from utils import load_config, save_config, resource_path
 
-if __name__ == "__main__":
+
+
+if __name__ == "__main__":  # noqa: E402 (импорты PyQt должны идти после настройки логирования)
     # Configure logging; level can be raised via PHOTOEDITOR_LOGLEVEL env variable
     log_level = os.environ.get("PHOTOEDITOR_LOGLEVEL", "WARNING").upper()
     logging.basicConfig(
@@ -22,12 +25,22 @@ if __name__ == "__main__":
         format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
     )
 
+    # High-DPI: без этих атрибутов на масштабированных экранах (125–150%)
+    # интерфейс, включая тайтлбары MDI-подокон, рисуется мелко и затем
+    # растягивается — отсюда размытый заголовок окна с изображением.
+    QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    QApplication.setAttribute(Qt.AA_UseHighDpiPixmaps, True)
+
     # Initialize the PyQt5 application
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(resource_path("icons/icon.ico")))
 
     # Load configuration from file
     config = load_config()
+
+    # Тема оформления (General.theme: system / light / dark)
+    import theme as theme_module
+    theme_module.init_theme(app, config)
 
     # Create the main window
     window = MainWindow(config)
@@ -51,6 +64,11 @@ if __name__ == "__main__":
         file_path = sys.argv[1]
         if os.path.isfile(file_path):
             window.openFile(file_path)
+    else:
+        # Иначе открываем последний файл из предыдущей сессии (General.last_opened_file)
+        last_file = config['General'].get('last_opened_file', '') if 'General' in config else ''
+        if last_file and os.path.isfile(last_file):
+            window.openFile(last_file)
 
     # Start the application event loop
     sys.exit(app.exec_())

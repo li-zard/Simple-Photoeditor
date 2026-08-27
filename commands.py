@@ -4,7 +4,7 @@ import numpy as np
 from PyQt5.QtWidgets import QApplication, QGraphicsItem, QMessageBox
 from PyQt5.QtGui import QImage, QPixmap, QPainter, QTransform
 from PyQt5.QtCore import QRect, Qt
-from PIL import Image, ImageEnhance
+from imageops import apply_adjustments_pipeline
 from editor import ImageEditor
 from scene import MovableImageItem
 
@@ -62,66 +62,13 @@ class AdjustmentsCommand(Command):
 
     def execute(self):
         """Apply brightness, contrast, gamma adjustments, and optionally autobalance."""
-        image = self.original_image.copy()
-        if self.autobalance:
-            width, height = image.width(), image.height()
-            ptr = image.bits()
-            ptr.setsize(height * width * 4)
-            img_array = np.frombuffer(ptr, dtype=np.uint8).reshape(height, width, 4).copy()
-
-            r_hist = np.histogram(img_array[:, :, 2], bins=256, range=(0, 256))[0]
-            g_hist = np.histogram(img_array[:, :, 1], bins=256, range=(0, 256))[0]
-            b_hist = np.histogram(img_array[:, :, 0], bins=256, range=(0, 256))[0]
-            total_pixels = width * height
-            threshold = total_pixels * 0.05
-
-            def find_bounds(hist):
-                low, high = 0, 255
-                count = 0
-                for i, val in enumerate(hist):
-                    count += val
-                    if count > threshold:
-                        low = i
-                        break
-                count = 0
-                for i, val in enumerate(hist[::-1]):
-                    count += val
-                    if count > threshold:
-                        high = 255 - i
-                        break
-                if low >= high:
-                    high = low + 1 if low < 255 else 255
-                    low = high - 1 if high > 0 else 0
-                return low, high
-
-            r_low, r_high = find_bounds(r_hist)
-            g_low, g_high = find_bounds(g_hist)
-            b_low, b_high = find_bounds(b_hist)
-
-            r_range = max(r_high - r_low, 1)
-            g_range = max(g_high - g_low, 1)
-            b_range = max(b_high - b_low, 1)
-
-            img_array[:, :, 2] = np.clip((img_array[:, :, 2].astype(np.float32) - r_low) * 255 / r_range, 0, 255).astype(np.uint8)
-            img_array[:, :, 1] = np.clip((img_array[:, :, 1].astype(np.float32) - g_low) * 255 / g_range, 0, 255).astype(np.uint8)
-            img_array[:, :, 0] = np.clip((img_array[:, :, 0].astype(np.float32) - b_low) * 255 / b_range, 0, 255).astype(np.uint8)
-
-            image = QImage(img_array.tobytes(), width, height, image.bytesPerLine(), QImage.Format_RGB32)
-
-        pil_img = Image.frombytes("RGBA", (image.width(), image.height()), image.bits().asstring(image.byteCount()))
-        if self.brightness != 0:
-            enhancer = ImageEnhance.Brightness(pil_img)
-            pil_img = enhancer.enhance(1.0 + self.brightness)
-        if self.contrast != 0:
-            enhancer = ImageEnhance.Contrast(pil_img)
-            pil_img = enhancer.enhance(1.0 + self.contrast)
-        if self.gamma != 1.0:
-            # Настоящая гамма: степенная кривая ((px / 255) ** (1 / gamma)) * 255 через LUT
-            inv_gamma = 1.0 / self.gamma
-            lut = ((np.arange(256, dtype=np.float32) / 255.0) ** inv_gamma * 255.0 + 0.5).astype(np.uint8)
-            pil_img = pil_img.point(lut.tolist() * 4)  # RGBA: одна кривая на все каналы (альфа 255 → 255)
-
-        self.adjusted_image = QImage(pil_img.tobytes(), image.width(), image.height(), image.bytesPerLine(), QImage.Format_RGB32)
+        self.adjusted_image = apply_adjustments_pipeline(
+            self.original_image,
+            brightness=self.brightness,
+            contrast=self.contrast,
+            gamma=self.gamma,
+            autobalance=self.autobalance,
+        )
         self.editor.setImage(self.adjusted_image, keep_view=True)
 
     def redo(self):
@@ -294,43 +241,83 @@ class CutCommand(Command):
         self.editor.window().statusBar().showMessage("Cut undone", 2000)
 
 class ResizeCommand(Command):
-    def __init__(self, editor, old_image, new_image):
+    """Изменение размера изображения.
+
+    Мутация выполняется в execute() (контракт этапа 3): раньше изображение
+    масштабировалось в ImageEditor.resizeImage() до создания команды.
+    """
+
+    def __init__(self, editor, new_width, new_height, keep_aspect=True):
         self.editor = editor
-        self.old_image = old_image
-        self.new_image = new_image
+        self.new_width = new_width
+        self.new_height = new_height
+        self.keep_aspect = keep_aspect
+        self.old_image = None
+        self.new_image = None
+
+    def execute(self):
+        """Compute and apply the resized image."""
+        if self.old_image is None:
+            self.old_image = self.editor.getCurrentImage().copy()
+        aspect_mode = Qt.KeepAspectRatio if self.keep_aspect else Qt.IgnoreAspectRatio
+        self.new_image = self.editor.getCurrentImage().scaled(
+            self.new_width, self.new_height, aspect_mode, Qt.SmoothTransformation)
+        self._apply(self.new_image)
+
+    def _apply(self, image):
+        self.editor.setImage(image, keep_view=True)
+        # Размеры сцены изменились — вписать изображение в окно
+        self.editor.fitInViewWithRulers()
+        self.editor.scene.update()
+        self.editor.viewport().update()
 
     def undo(self):
         """Revert to the original image size."""
-        self.editor.current_image = self.old_image
-        self.editor.image_item.setPixmap(QPixmap.fromImage(self.editor.current_image))
-        self.editor.scene.setSceneRect(0, 0, self.old_image.width(), self.old_image.height())
-        self.editor.image_item.setPos(0, 0)
-        self.editor.fitInViewWithRulers()
-        self.editor.scene.update()
-        self.editor.viewport().update()
+        self._apply(self.old_image)
 
     def redo(self):
         """Apply the resized image."""
-        self.editor.current_image = self.new_image
-        self.editor.image_item.setPixmap(QPixmap.fromImage(self.editor.current_image))
-        self.editor.scene.setSceneRect(0, 0, self.new_image.width(), self.new_image.height())
-        self.editor.image_item.setPos(0, 0)
-        self.editor.fitInViewWithRulers()
+        self._apply(self.new_image)
+
+class FixPasteCommand(Command):
+    """Фиксация плавающих вставленных элементов на холсте.
+
+    Мутация выполняется в execute() (контракт этапа 3): раньше рисование
+    выполнялось в ImageEditor.fixPastedItems() до создания команды.
+    """
+
+    def __init__(self, editor, pasted_items):
+        self.editor = editor
+        self.pasted_items = list(pasted_items)
+        self.positions = [item.pos() for item in pasted_items]
+        self.old_image = None
+        self.new_image = None
+
+    def execute(self):
+        """Bake all floating pasted items onto the canvas."""
+        if not self.pasted_items:
+            return
+        if self.old_image is None:
+            self.old_image = self.editor.getCurrentImage().copy()
+        image = self.editor.getCurrentImage()
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        for item in self.pasted_items:
+            pos = item.pos()
+            painter.drawPixmap(int(pos.x()), int(pos.y()), item.pixmap())
+            if item.scene():
+                self.editor.scene.removeItem(item)
+        painter.end()
+        self.new_image = image
+        self.editor.setImage(image, keep_view=True)
+        self.editor.pasted_items.clear()
         self.editor.scene.update()
         self.editor.viewport().update()
 
-class FixPasteCommand(Command):
-    def __init__(self, editor, old_image, new_image, pasted_items):
-        self.editor = editor
-        self.old_image = old_image
-        self.new_image = new_image
-        self.pasted_items = pasted_items
-        self.positions = [item.pos() for item in pasted_items]
-
     def undo(self):
         """Undo the fixation of pasted items."""
-        self.editor.current_image = self.old_image
-        self.editor.image_item.setPixmap(QPixmap.fromImage(self.editor.current_image))
+        self.editor.setImage(self.old_image, keep_view=True)
         self.editor.pasted_items.clear()
         for item, pos in zip(self.pasted_items, self.positions):
             self.editor.scene.addItem(item)
@@ -343,12 +330,4 @@ class FixPasteCommand(Command):
 
     def redo(self):
         """Redo the fixation of pasted items."""
-        self.editor.current_image = self.new_image
-        self.editor.image_item.setPixmap(QPixmap.fromImage(self.editor.current_image))
-        for item in self.pasted_items:
-            if item in self.editor.pasted_items:
-                self.editor.pasted_items.remove(item)
-            self.editor.scene.removeItem(item)
-        self.editor.pasted_items.clear()
-        self.editor.scene.update()
-        self.editor.viewport().update()
+        self.execute()

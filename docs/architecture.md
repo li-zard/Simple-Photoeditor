@@ -41,39 +41,48 @@ Arrows mean "imports".
 
 ```
 main.py ──► main_window.py ──► editor.py ──► scene.py
-   │              │                │            │
-   │              ├──► widgets.py ─┘            │
-   │              ├──► commands.py ──► scene.py │
-   │              └──► utils.py                 │
-   └──► utils.py                               (editor.py ◄──┘)
+   │              │                │
+   │              ├──► widgets.py ─┘
+   │              ├──► commands.py ──► imageops.py
+   │              ├──► theme.py ──► utils.py (deferred)
+   │              └──► utils.py
+   └──► utils.py
+
+(commands.py also imports editor.py and scene.py at module level;
+ editor.py breaks the resulting cycles with deferred, inside-method
+ imports of commands.py / imageops.py / widgets.py.)
 ```
 
 Key points:
 
 - [`main.py`](../main.py) imports [`MainWindow`](../main_window.py) and config helpers from [`utils.py`](../utils.py).
 - [`main_window.py`](../main_window.py) imports the editor ([`editor.py`](../editor.py)), dialogs and sub-window ([`widgets.py`](../widgets.py)), [`CropCommand`](../commands.py), and config utilities.
-- [`editor.py`](../editor.py) and [`scene.py`](../scene.py) reference each other, so they use **local (deferred) imports inside methods** to avoid circular-import problems at load time.
-- [`commands.py`](../commands.py) imports both [`ImageEditor`](../editor.py) (only for typing context) and [`MovableImageItem`](../scene.py), and defers importing [`CustomMdiSubWindow`](../widgets.py) inside method bodies.
+- [`scene.py`](../scene.py) imports no project module (the unused `ImageEditor` import was removed during Roadmap stage 3).
+- [`commands.py`](../commands.py) imports [`ImageEditor`](../editor.py), [`MovableImageItem`](../scene.py), and the shared pipeline from [`imageops.py`](../imageops.py) at module level.
+- [`editor.py`](../editor.py) sits at the center of the import cycles (commands ↔ editor, widgets ↔ editor), so it defers its imports of `commands.py`, `imageops.py`, and `widgets.py` into method bodies.
 - [`widgets.py`](../widgets.py) imports [`ImageEditor`](../editor.py)/[`EditorContainer`](../editor.py) and [`AdjustmentsCommand`](../commands.py).
+- [`imageops.py`](../imageops.py) and [`theme.py`](../theme.py) are leaf modules (NumPy/PyQt5/Pillow only), reusable and testable in isolation; `theme.py` defers its `utils` import into [`icon()`](../theme.py).
 
 ## 3. Layers and Responsibilities
 
 ### 3.1 Application layer — [`main.py`](../main.py)
 
-- Creates the [`QApplication`](../main.py), sets the window icon.
+- Enables High-DPI attributes (`AA_EnableHighDpiScaling`, `AA_UseHighDpiPixmaps`) before creating the [`QApplication`](../main.py) — prevents blurry stretched rendering (including MDI title bars) on scaled displays; sets the window icon.
 - Loads configuration via [`load_config()`](../utils.py).
-- Instantiates [`MainWindow`](../main_window.py), applies persisted window size, optionally opens a file passed as a command-line argument, and starts the event loop.
+- Initializes the theme via [`theme.init_theme()`](../theme.py) (`General.theme`: `system`/`light` → system palette, `dark` → dark palette + inverted icons).
+- Instantiates [`MainWindow`](../main_window.py), applies persisted window size, opens the CLI-argument file or — in its absence — `General.last_opened_file` from the previous session, and starts the event loop.
 
 ### 3.2 Application UI layer — [`main_window.py`](../main_window.py)
 
 [`MainWindow`](../main_window.py) owns everything the user sees at the top level:
 
 - **Actions** — one [`QAction`](../main_window.py) per operation (New, Open, Save, Print, Scan, Undo, Redo, Cut, Copy, Paste, Crop, Resize, Select All, Zoom In/Out, Fit, Actual Size, Rulers, Rotate, Flip, Grayscale, Adjustments, Tile, Cascade, Next, Previous, Selection Tool, About). Each action binds a keyboard shortcut, an icon from `icons/`, and a handler method.
-- **Menus** — File, Edit, View, Image (with Rotate/Flip submenus), Window, Help, plus a dynamic **Recent Files** submenu rebuilt by [`update_recent_files_menu()`](../main_window.py).
+- **Menus** — File, Edit, View, Image (with Rotate/Flip submenus), Settings (with the **Theme** radio submenu: System/Light/Dark), Window, Help, plus a dynamic **Recent Files** submenu rebuilt by [`update_recent_files_menu()`](../main_window.py).
+- **Theme switching** — [`switchTheme()`](../main_window.py) live-applies the palette and inverted icons via [`theme.apply_theme()`](../theme.py) and persists `General.theme` immediately.
 - **Toolbars** — File, Edit, View, Image, Tools.
 - **File operations** — [`newFile()`](../main_window.py) (with [`NewImageDialog`](../widgets.py)), [`openFile()`](../main_window.py) (dialog or direct path, also used by drag-and-drop and recent files), [`saveFile()`](../main_window.py)/[`saveFileAs()`](../main_window.py), [`printFile()`](../main_window.py) (QPrinter), [`scanImage()`](../main_window.py) (WIA on Windows).
 - **Edit dispatching** — most Edit/Image handlers resolve the active editor via [`currentEditor()`](../main_window.py) and delegate to it.
-- **Shutdown** — [`closeEvent()`](../main_window.py) persists window size and last-image settings, then walks all MDI sub-windows asking to save unsaved work.
+- **Shutdown** — [`closeEvent()`](../main_window.py) persists window size, `last_opened_file`, ruler visibility, and last-image settings, then walks all MDI sub-windows asking to save unsaved work.
 
 ### 3.3 Editor layer — [`editor.py`](../editor.py)
 
@@ -81,7 +90,7 @@ Key points:
   - Holds `current_image` / `original_image` (`QImage`), the `image_item` (`QGraphicsPixmapItem`), zoom factor, modification flag, and the undo/redo stacks.
   - [`setImage(image, keep_view=False)`](../editor.py) is the single entry point for putting a `QImage` on screen. New images (`keep_view=False`) reset zoom, refit the view and clear the modified flag; edits and undo/redo (`keep_view=True`) preserve the current zoom and scroll position.
   - Zoom/navigation: [`zoomIn()`](../editor.py), [`zoomOut()`](../editor.py), [`actualSize()`](../editor.py), [`fitInViewWithRulers()`](../editor.py).
-  - Command execution: [`executeCommand()`](../editor.py) runs a command and pushes it onto the undo stack.
+  - Command execution: [`executeCommand()`](../editor.py) runs a command, pushes it onto the undo stack, and trims the stack to `UNDO_LIMIT` (20).
   - Live-preview mechanism for dialogs: [`start_preview()`](../editor.py) / [`preview_rotation()`](../editor.py) / [`preview_adjustments()`](../editor.py) / [`cancel_preview()`](../editor.py) / [`apply_rotation()`](../editor.py) / [`apply_adjustments()`](../editor.py).
   - Pasted-item management: [`fixPastedItems()`](../editor.py), [`applyAllPastedItems()`](../editor.py).
 - [`EditorContainer`](../editor.py) composes one `ImageEditor` with two [`RulerWidget`](../widgets.py) instances and a corner widget in a `QGridLayout`; it toggles ruler visibility and keeps ruler sizes in sync on resize.
@@ -97,7 +106,7 @@ Key points:
 
 ### 3.5 Operations layer — [`commands.py`](../commands.py)
 
-All destructive operations are encapsulated as command objects (see [Undo/Redo System](undo-redo.md)):
+All destructive operations are encapsulated as command objects (see [Undo/Redo System](undo-redo.md)). Since Roadmap stage 3 every command performs its mutation inside `execute()` and delegates pixel math to [`imageops.py`](../imageops.py):
 
 | Command | Operation |
 |---------|-----------|
@@ -110,16 +119,21 @@ All destructive operations are encapsulated as command objects (see [Undo/Redo S
 | [`ResizeCommand`](../commands.py) | Image rescaling |
 | [`FixPasteCommand`](../commands.py) | Bake floating pasted items into the base image |
 
-### 3.6 Widgets & dialogs layer — [`widgets.py`](../widgets.py)
+### 3.6 Image processing layer — [`imageops.py`](../imageops.py)
+
+- [`apply_adjustments_pipeline(image, brightness, contrast, gamma, autobalance)`](../imageops.py) — the single implementation of the corrections chain (autobalance → brightness → contrast → gamma), shared by [`AdjustmentsCommand.execute()`](../commands.py) and [`ImageEditor.preview_adjustments()`](../editor.py) so the live preview always matches the committed result.
+- Helpers: per-channel histogram stretching with a 5% clip ([`_autobalance_rgba8888()`](../imageops.py)), true power-curve gamma via a NumPy LUT ([`_apply_gamma()`](../imageops.py)), and QImage ↔ PIL conversions pinned to the platform-independent `Format_RGBA8888` byte order.
+
+### 3.7 Widgets & dialogs layer — [`widgets.py`](../widgets.py)
 
 - [`RulerWidget`](../widgets.py) — custom-painted horizontal/vertical ruler with adaptive tick spacing and a red cursor indicator.
-- [`CustomMdiSubWindow`](../widgets.py) — MDI child window hosting an `EditorContainer`; intercepts close to prompt for unsaved changes.
+- [`CustomMdiSubWindow`](../widgets.py) — MDI child window hosting an `EditorContainer`; applies the persisted `Editor.show_rulers` setting to new windows and intercepts close to prompt for unsaved changes.
 - [`NewImageDialog`](../widgets.py) — width/height/units (px/cm/in)/DPI/color depth/background color.
 - [`AdjustmentsDialog`](../widgets.py) — live-preview sliders for brightness/contrast/gamma plus an autobalance toggle.
 - [`ResizeDialog`](../widgets.py) — width/height/percent fields with linked aspect-ratio logic.
 - [`RotationDialog`](../widgets.py) — spinbox + slider (-180…180°) with live rotation preview.
 
-### 3.7 Utilities layer — [`utils.py`](../utils.py)
+### 3.8 Utilities layer — [`utils.py`](../utils.py)
 
 - [`get_user_config_path()`](../utils.py) — per-user config directory via `appdirs`.
 - [`resource_path()`](../utils.py) — resource resolution that works both in development and under PyInstaller (`sys._MEIPASS`).
@@ -130,7 +144,7 @@ All destructive operations are encapsulated as command objects (see [Undo/Redo S
 
 | Pattern | Where | Purpose |
 |---------|-------|---------|
-| **Command** | [`commands.py`](../commands.py), [`executeCommand()`](../editor.py) | Encapsulates each edit as an object with `execute/undo/redo`; enables unlimited-depth history |
+| **Command** | [`commands.py`](../commands.py), [`executeCommand()`](../editor.py) | Encapsulates each edit as an object with `execute/undo/redo`; bounded history (`UNDO_LIMIT` = 20) |
 | **MDI** | [`QMdiArea`](../main_window.py) + [`CustomMdiSubWindow`](../widgets.py) | Multiple simultaneous documents in one application window |
 | **MVC (loose)** | Model: `QImage` data; View: `QGraphicsView`/`QGraphicsScene`; Controller: `MainWindow` + dialogs | Separation of data, presentation, and input handling |
 | **Deferred imports** | [`editor.py`](../editor.py), [`commands.py`](../commands.py) | Breaks circular-import cycles between tightly coupled modules |
@@ -170,8 +184,9 @@ MainWindow.cropImage()                     main_window.py
    ├─ editor.executeCommand(command)
    │     ├─ command.execute()              # editor.setImage(cropped)
    │     ├─ editor.undo_stack.append(command)
-   │     ├─ editor.redo_stack.clear()
-   │     └─ editor.is_modified = True
+   │     ├─ editor.redo_stack.clear()      # new branch invalidates redo history
+   │     ├─ editor.is_modified = True
+   │     └─ trim undo_stack to UNDO_LIMIT (20)   # oldest commands dropped
    └─ remove selection rect + handles from scene
 ```
 
@@ -227,6 +242,8 @@ User closes window
    ▼
 MainWindow.closeEvent()                    main_window.py
    ├─ persist General.window_width/height
+   ├─ persist General.last_opened_file      # active sub-window's path
+   ├─ persist Editor.show_rulers            # active editor's ruler state
    ├─ persist LastImageSettings.*
    ├─ save_config(config)                  # utils.py → user config dir
    └─ for each MDI sub-window with is_modified:
@@ -238,14 +255,15 @@ MainWindow.closeEvent()                    main_window.py
 - Optional dependencies degrade gracefully: `cv2` (grayscale) and WIA/`win32com` (scanning) are wrapped in try/except imports with `CV2_AVAILABLE` / `WIA_AVAILABLE` flags; the UI shows a warning instead of crashing.
 - File operations validate existence and `QImage.isNull()` before use; save failures raise user-visible error dialogs.
 - Config save failures are caught and printed rather than aborting shutdown.
-- The undo stack for resize operations is capped at 10 entries ([`resizeImage()`](../editor.py)) to bound memory use.
+- Undo history is bounded: [`executeCommand()`](../editor.py) trims `undo_stack` to the class constant `UNDO_LIMIT` (20 commands, oldest dropped), keeping memory use predictable in long sessions.
 
 ## 7. Known Quirks (documented behavior)
 
 - The `os` and `sys` entries in the repository root are files, not directories.
-- `last_opened_file` is seeded in the `General` config section but is no longer read anywhere (see [Roadmap, stage 3](roadmap.md)).
 - Logging is configured in [`main.py`](../main.py) via the `PHOTOEDITOR_LOGLEVEL` environment variable (default `WARNING`); loggers are named `photoeditor.<module>`.
 
 > Historical quirks (dead code in `editor.py`, duplicated action definitions, duplicated `resource_path()`, debug `print()` statements) were resolved during Roadmap stage 1.
 
 > Behavioral quirks (zoom reset on edits, fake gamma via `ImageEnhance.Brightness`, MRU lost on crash, missing EXIF orientation, no JPEG quality control, unthrottled live preview, hardcoded Cut fill color) were resolved during Roadmap stage 2.
+
+> Architectural quirks (duplicated adjustments pipeline, resize/paste-fix mutations outside `execute()`, unbounded undo history, dead config keys `theme`/`show_rulers`/`last_opened_file`, unused import in `scene.py`) were resolved during Roadmap stage 3.

@@ -46,19 +46,18 @@
 
 Цель: устранить дублирование и выровнять контракты перед добавлением функций.
 
-- [ ] **Вынести общий пайплайн коррекций.** Создать модуль `imageops.py` с функцией `apply_adjustments_pipeline(image, brightness, contrast, gamma, autobalance)`. Перевести на неё [`AdjustmentsCommand.execute()`](../commands.py:61) и [`ImageEditor.preview_adjustments()`](../editor.py:453) — сейчас там ~50 скопированных строк (гистограмма → границы → растяжка каналов → PIL).
-- [ ] **Привести команды к контракту `execute()`.** Перенести мутацию внутрь `execute()` у [`ResizeCommand`](../commands.py:290) (сейчас применяется в [`resizeImage()`](../editor.py:345)) и [`FixPasteCommand`](../commands.py:316) (сейчас — в [`fixPastedItems()`](../editor.py:114)), чтобы каждое редактирование шло через [`executeCommand()`](../editor.py:93).
-- [ ] **Ограничить память undo.** Полный снапшот `QImage` на команду (~48 МБ для 4000×3000). Варианты по возрастанию усилия:
-  1. общий лимит стека (например, 20 команд) в [`executeCommand()`](../editor.py:93);
-  2. хранение снапшотов сжатыми (PNG в `QBuffer`);
-  3. миграция на `QUndoStack`/`QUndoCommand` Qt.
-- [ ] **Убрать неиспользуемый импорт** `ImageEditor` из [`scene.py`](../scene.py:4) — сцена работает через `self.views()[0]`.
-- [ ] **Конфиг: реализовать или удалить.** Ключи `theme` ([`utils.py`](../utils.py:43)), `show_rulers`, `default_zoom`, `last_opened_file` ([`main.py`](../main.py:29)) пишутся, но не применяются:
-  - [ ] `theme = dark` → тёмная палитра через `QPalette` при старте;
-  - [ ] `show_rulers` → восстановление состояния линеек при открытии окна;
-  - [ ] `last_opened_file` → либо открыть при старте, либо убрать чтение из [`main.py`](../main.py:29).
+- [x] **Вынести общий пайплайн коррекций.** Создан модуль [`imageops.py`](../imageops.py) с функцией [`apply_adjustments_pipeline()`](../imageops.py:19); на неё переведены [`AdjustmentsCommand.execute()`](../commands.py:63) и [`ImageEditor.preview_adjustments()`](../editor.py:404) (~100 скопированных строк удалено). *(выполнено)*
+- [x] **Привести команды к контракту `execute()`.** Мутация перенесена внутрь `execute()` у [`ResizeCommand`](../commands.py:243) (теперь принимает `new_width/new_height/keep_aspect`) и [`FixPasteCommand`](../commands.py:286) (принимает `pasted_items`); [`resizeImage()`](../editor.py:296) и [`fixPastedItems()`](../editor.py:112) создают команду и идут через [`executeCommand()`](../editor.py:90). *(выполнено)*
+- [x] **Ограничить память undo.** Реализован вариант 1: общий лимит стека [`UNDO_LIMIT = 20`](../editor.py:83) в [`executeCommand()`](../editor.py:90) — самые старые команды вытесняются. *(выполнено)*
+- [x] **Убрать неиспользуемый импорт** `ImageEditor` из [`scene.py`](../scene.py:1) — сцена работает через `self.views()[0]`. *(выполнено)*
+- [x] **Конфиг: реализовать или удалить.** Ключи применяются:
+  - [x] `theme` → полноценная система тем: модуль [`theme.py`](../theme.py) (палитры, [`init_theme()`](../theme.py:151), [`apply_theme()`](../theme.py:120)), меню **Settings → Theme** (System/Light/Dark) с живым переключением ([`switchTheme()`](../main_window.py:403)) и немедленным сохранением в конфиг; в тёмной теме все иконки инвертируются ([`icon()`](../theme.py:88));
+  - [x] `show_rulers` → восстановление состояния линеек при создании подокна ([`CustomMdiSubWindow.__init__`](../widgets.py:124)), состояние сохраняется в [`closeEvent()`](../main_window.py:82);
+  - [x] `last_opened_file` → открывается при старте, если нет файла в аргументах командной строки ([`main.py`](../main.py:71)); путь сохраняется в [`closeEvent()`](../main_window.py:82).
+  - `default_zoom` оставлен на будущее (в роадмап не входит).
+- [x] **High-DPI.** Включены `AA_EnableHighDpiScaling` + `AA_UseHighDpiPixmaps` до создания `QApplication` ([`main.py`](../main.py:27)) — устраняет размытие интерфейса (включая заголовки MDI-подокон) на масштабированных экранах.
 
-**Критерии приёмки:** правки коррекций/resize/фиксации вставки проходят полный цикл execute → undo → redo; память процесса при 20+ правках большого изображения остаётся ограниченной.
+**Критерии приёмки:** правки коррекций/resize/фиксации вставки проходят полный цикл execute → undo → redo; память процесса при 20+ правках большого изображения остаётся ограниченной; переключение тем применяется без перезапуска, иконки инвертируются в тёмной теме.
 
 ---
 

@@ -3,7 +3,8 @@ import logging
 
 from PyQt5.QtWidgets import (
     QMainWindow, QAction, QFileDialog, QDialog, QMenu, QMdiArea, QMessageBox,
-    QApplication, QStatusBar, QGraphicsView, QCheckBox, QInputDialog
+    QApplication, QStatusBar, QGraphicsView, QCheckBox, QInputDialog,
+    QActionGroup
 )
 from PyQt5.QtGui import QIcon, QKeySequence, QColor, QImage, QPixmap, QPainter, QPen
 from PyQt5.QtCore import Qt, QRectF, QTimer
@@ -13,6 +14,7 @@ from editor import ImageEditor, EditorContainer
 from widgets import CustomMdiSubWindow, NewImageDialog, AdjustmentsDialog, ResizeDialog, RotationDialog
 from commands import CropCommand
 from utils import load_config, save_config, get_recent_files, add_recent_file, resource_path
+import theme
 
 logger = logging.getLogger("photoeditor.main_window")
 
@@ -90,6 +92,18 @@ class MainWindow(QMainWindow):
             self.config.set('General', 'window_width', str(self.width()))
             self.config.set('General', 'window_height', str(self.height()))
 
+            # Последний открытый файл (открывается при следующем старте)
+            active = self.mdi_area.activeSubWindow()
+            if active is not None and getattr(active, 'file_path', None):
+                self.config.set('General', 'last_opened_file', active.file_path)
+
+            # Состояние линеек активного редактора
+            if not self.config.has_section('Editor'):
+                self.config.add_section('Editor')
+            if active is not None:
+                self.config.set('Editor', 'show_rulers',
+                                'true' if active.editor_container.editor.rulers_visible else 'false')
+
             if not self.config.has_section('LastImageSettings'):
                 self.config.add_section('LastImageSettings')
             self.config.set('LastImageSettings', 'width', str(self.last_image_settings['width']))
@@ -138,148 +152,183 @@ class MainWindow(QMainWindow):
         """Create actions for menus and toolbars"""
         # File actions
         self.new_act = QAction("&New", self, shortcut="Ctrl+N", triggered=self.newFile)
-        self.new_act.setIcon(QIcon(resource_path("icons/new.png")))
+        self.new_act.setIcon(theme.icon("new"))
+        self.new_act.setObjectName("act_icon_new")
         self.new_act.setToolTip("New Image (Ctrl+N)")
 
         self.open_act = QAction("&Open", self, shortcut="Ctrl+O", triggered=lambda checked: self.openFile())
-        self.open_act.setIcon(QIcon(resource_path("icons/open.png")))
+        self.open_act.setIcon(theme.icon("open"))
+        self.open_act.setObjectName("act_icon_open")
         self.open_act.setToolTip("Open File (Ctrl+O)")
 
         self.save_act = QAction("&Save", self, shortcut="Ctrl+S", triggered=lambda checked: self.saveFile())
-        self.save_act.setIcon(QIcon(resource_path("icons/save.png")))
+        self.save_act.setIcon(theme.icon("save"))
+        self.save_act.setObjectName("act_icon_save")
         self.save_act.setToolTip("Save File (Ctrl+S)")
 
         self.save_as_act = QAction("Save &As...", self, shortcut="Ctrl+Shift+S", triggered=self.saveFileAs)
-        self.save_as_act.setIcon(QIcon(resource_path("icons/save_as.png")))  # Если нет иконки, можно использовать save.png
+        self.save_as_act.setIcon(theme.icon("save_as"))  # Если нет иконки, можно использовать save.png
+        self.save_as_act.setObjectName("act_icon_save_as")
         self.save_as_act.setToolTip("Save As (Ctrl+Shift+S)")
 
         self.print_act = QAction("&Print", self, shortcut="Ctrl+P", triggered=self.printFile)
-        self.print_act.setIcon(QIcon(resource_path("icons/print.png")))
+        self.print_act.setIcon(theme.icon("print"))
+        self.print_act.setObjectName("act_icon_print")
         self.print_act.setToolTip("Print (Ctrl+P)")
 
         self.scan_act = QAction("S&can", self, shortcut="Ctrl+Shift+N", triggered=self.scanImage)
-        self.scan_act.setIcon(QIcon(resource_path("icons/scan.png")))  # Если нет, подбери подходящую
+        self.scan_act.setIcon(theme.icon("scan"))  # Если нет, подбери подходящую
+        self.scan_act.setObjectName("act_icon_scan")
         self.scan_act.setToolTip("Scan (Ctrl+Shift+N)")
 
         self.exit_act = QAction("E&xit", self, shortcut="Ctrl+Q", triggered=self.close)
-        self.exit_act.setIcon(QIcon(resource_path("icons/exit.png")))  # Если нет, можно использовать close.png
+        self.exit_act.setIcon(theme.icon("exit"))  # Если нет, можно использовать close.png
+        self.exit_act.setObjectName("act_icon_exit")
         self.exit_act.setToolTip("Exit (Ctrl+Q)")
 
         # Edit actions
         self.undo_act = QAction("&Undo", self, shortcut="Ctrl+Z", triggered=self.undo)
-        self.undo_act.setIcon(QIcon(resource_path("icons/undo.png")))
+        self.undo_act.setIcon(theme.icon("undo"))
+        self.undo_act.setObjectName("act_icon_undo")
         self.undo_act.setToolTip("Undo (Ctrl+Z)")
 
         self.redo_act = QAction("&Redo", self, shortcut="Ctrl+Y", triggered=self.redo)  # Новое действие
-        self.redo_act.setIcon(QIcon(resource_path("icons/redo.png")))  # Укажи путь к иконке redo.png
+        self.redo_act.setIcon(theme.icon("redo"))  # Укажи путь к иконке redo.png
+        self.redo_act.setObjectName("act_icon_redo")
         self.redo_act.setToolTip("Redo (Ctrl+Y)")
 
         self.cut_act = QAction("Cu&t", self, shortcut="Ctrl+X", triggered=self.cut)
-        self.cut_act.setIcon(QIcon(resource_path("icons/cut.png")))
+        self.cut_act.setIcon(theme.icon("cut"))
+        self.cut_act.setObjectName("act_icon_cut")
         self.cut_act.setToolTip("Cut (Ctrl+X)")
 
         self.copy_act = QAction("&Copy", self, shortcut="Ctrl+C", triggered=self.copy)
-        self.copy_act.setIcon(QIcon(resource_path("icons/copy.png")))
+        self.copy_act.setIcon(theme.icon("copy"))
+        self.copy_act.setObjectName("act_icon_copy")
         self.copy_act.setToolTip("Copy (Ctrl+C)")
 
         self.paste_act = QAction("&Paste", self, shortcut="Ctrl+V", triggered=self.paste)
-        self.paste_act.setIcon(QIcon(resource_path("icons/paste.png")))
+        self.paste_act.setIcon(theme.icon("paste"))
+        self.paste_act.setObjectName("act_icon_paste")
         self.paste_act.setToolTip("Paste (Ctrl+V)")
 
         self.crop_act = QAction("C&rop", self, shortcut="Ctrl+R", triggered=self.cropImage)
-        self.crop_act.setIcon(QIcon(resource_path("icons/crop.png")))
+        self.crop_act.setIcon(theme.icon("crop"))
+        self.crop_act.setObjectName("act_icon_crop")
         self.crop_act.setToolTip("Crop to Selection (Ctrl+R)")
 
         # Новое действие: Resize
-        self.resizeAct = QAction(QIcon(resource_path("icons/resize.png")), "&Resize...", self)
+        self.resizeAct = QAction("&Resize...", self)
+        self.resizeAct.setIcon(theme.icon("resize"))
+        self.resizeAct.setObjectName("act_icon_resize")
         self.resizeAct.setStatusTip("Resize the image")
         self.resizeAct.triggered.connect(self.resizeImage)
 
         self.select_all_act = QAction("Select &All", self, shortcut="Ctrl+A", triggered=self.selectAll)
-        self.select_all_act.setIcon(QIcon(resource_path("icons/select_all.png")))
+        self.select_all_act.setIcon(theme.icon("select_all"))
+        self.select_all_act.setObjectName("act_icon_select_all")
         self.select_all_act.setToolTip("Select All (Ctrl+A)")
 
         # View actions
         self.zoom_in_act = QAction("Zoom &In", self, shortcut="Ctrl++", triggered=self.zoomIn)
-        self.zoom_in_act.setIcon(QIcon(resource_path("icons/zoom_in.png")))
+        self.zoom_in_act.setIcon(theme.icon("zoom_in"))
+        self.zoom_in_act.setObjectName("act_icon_zoom_in")
         self.zoom_in_act.setToolTip("Zoom In (Ctrl++)")
 
         self.zoom_out_act = QAction("Zoom &Out", self, shortcut="Ctrl+-", triggered=self.zoomOut)
-        self.zoom_out_act.setIcon(QIcon(resource_path("icons/zoom_out.png")))
+        self.zoom_out_act.setIcon(theme.icon("zoom_out"))
+        self.zoom_out_act.setObjectName("act_icon_zoom_out")
         self.zoom_out_act.setToolTip("Zoom Out (Ctrl+-)")
 
         self.fit_screen_act = QAction("&Fit to Screen", self, shortcut="Ctrl+0", triggered=self.fitToScreen)
-        self.fit_screen_act.setIcon(QIcon(resource_path("icons/fit_screen.png")))
+        self.fit_screen_act.setIcon(theme.icon("fit_screen"))
+        self.fit_screen_act.setObjectName("act_icon_fit_screen")
         self.fit_screen_act.setToolTip("Fit to Screen (Ctrl+0)")
 
         self.actual_size_act = QAction("&Actual Size", self, shortcut="Ctrl+1", triggered=self.actualSize)
-        self.actual_size_act.setIcon(QIcon(resource_path("icons/actual_size.png")))  # Если нет, подбери подходящую
+        self.actual_size_act.setIcon(theme.icon("actual_size"))  # Если нет, подбери подходящую
+        self.actual_size_act.setObjectName("act_icon_actual_size")
         self.actual_size_act.setToolTip("Actual Size (Ctrl+1)")
 
         self.toggle_rulers_act = QAction("Show &Rulers", self)
-        self.toggle_rulers_act.setIcon(QIcon(resource_path("icons/ruler.png")))
+        self.toggle_rulers_act.setIcon(theme.icon("ruler"))
+        self.toggle_rulers_act.setObjectName("act_icon_ruler")
         self.toggle_rulers_act.setToolTip("Show Rulers")
         self.toggle_rulers_act.triggered.connect(self.toggleRulers)  # Подключаем сигнал triggered
 
         # Image actions
         self.rotate_90_cw_act = QAction("Rotate 90° &CW", self, triggered=lambda: self.rotateImage(90))
-        self.rotate_90_cw_act.setIcon(QIcon(resource_path("icons/rotate_cw.png")))
+        self.rotate_90_cw_act.setIcon(theme.icon("rotate_cw"))
+        self.rotate_90_cw_act.setObjectName("act_icon_rotate_cw")
         self.rotate_90_cw_act.setToolTip("Rotate 90° Clockwise")
 
         self.rotate_90_ccw_act = QAction("Rotate 90° CC&W", self, triggered=lambda: self.rotateImage(-90))
-        self.rotate_90_ccw_act.setIcon(QIcon(resource_path("icons/rotate_ccw.png")))
+        self.rotate_90_ccw_act.setIcon(theme.icon("rotate_ccw"))
+        self.rotate_90_ccw_act.setObjectName("act_icon_rotate_ccw")
         self.rotate_90_ccw_act.setToolTip("Rotate 90° Counter-Clockwise")
 
         self.rotate_180_act = QAction("Rotate &180°", self, triggered=lambda: self.rotateImage(180))
-        self.rotate_180_act.setIcon(QIcon(resource_path("icons/rotate_cw.png")))  # Если нет, можно использовать rotate_cw.png
+        self.rotate_180_act.setIcon(theme.icon("rotate_cw"))  # Если нет, можно использовать rotate_cw.png
+        self.rotate_180_act.setObjectName("act_icon_rotate_cw")
         self.rotate_180_act.setToolTip("Rotate 180°")
 
         self.precise_rotate_act = QAction("Rotate...", self, triggered=self.openPreciseRotationDialog)
-        self.precise_rotate_act.setIcon(QIcon(resource_path("icons/rotate_cw.png")))
+        self.precise_rotate_act.setIcon(theme.icon("rotate_cw"))
+        self.precise_rotate_act.setObjectName("act_icon_rotate_cw")
         self.precise_rotate_act.setToolTip("Precise Rotation")
 
         self.flip_horizontal_act = QAction("Flip &Horizontal", self, triggered=lambda: self.flipImage(True))
-        self.flip_horizontal_act.setIcon(QIcon(resource_path("icons/flip.png")))
+        self.flip_horizontal_act.setIcon(theme.icon("flip"))
+        self.flip_horizontal_act.setObjectName("act_icon_flip")
         self.flip_horizontal_act.setToolTip("Flip Horizontal")
 
         self.flip_vertical_act = QAction("Flip &Vertical", self, triggered=lambda: self.flipImage(False))
-        self.flip_vertical_act.setIcon(QIcon(resource_path("icons/flip.png")))
+        self.flip_vertical_act.setIcon(theme.icon("flip"))
+        self.flip_vertical_act.setObjectName("act_icon_flip")
         self.flip_vertical_act.setToolTip("Flip Vertical")
 
         self.grayscale_act = QAction("Convert to &Grayscale", self, triggered=self.convertToGrayscale)
-        self.grayscale_act.setIcon(QIcon(resource_path("icons/grayscale.png")))
+        self.grayscale_act.setIcon(theme.icon("grayscale"))
+        self.grayscale_act.setObjectName("act_icon_grayscale")
         self.grayscale_act.setToolTip("Convert to Grayscale")
 
         self.adjustments_act = QAction("&Adjustments...", self, triggered=self.showAdjustmentsDialog)
-        self.adjustments_act.setIcon(QIcon(resource_path("icons/tune.png")))
+        self.adjustments_act.setIcon(theme.icon("tune"))
+        self.adjustments_act.setObjectName("act_icon_tune")
         self.adjustments_act.setToolTip("Adjustments...")
 
         # Window actions
         self.tile_act = QAction("&Tile", self, triggered=self.mdi_area.tileSubWindows)
-        self.tile_act.setIcon(QIcon(resource_path("icons/tile.png")))  # Если нет, подбери подходящую
+        self.tile_act.setIcon(theme.icon("tile"))  # Если нет, подбери подходящую
+        self.tile_act.setObjectName("act_icon_tile")
         self.tile_act.setToolTip("Tile Windows")
 
         self.cascade_act = QAction("&Cascade", self, triggered=self.mdi_area.cascadeSubWindows)
-        self.cascade_act.setIcon(QIcon(resource_path("icons/cascade.png")))  # Если нет, подбери подходящую
+        self.cascade_act.setIcon(theme.icon("cascade"))  # Если нет, подбери подходящую
+        self.cascade_act.setObjectName("act_icon_cascade")
         self.cascade_act.setToolTip("Cascade Windows")
 
         self.next_act = QAction("&Next", self, shortcut="Ctrl+Tab", triggered=self.mdi_area.activateNextSubWindow)
-        self.next_act.setIcon(QIcon(resource_path("icons/next.png")))  # Если нет, подбери подходящую
+        self.next_act.setIcon(theme.icon("next"))  # Если нет, подбери подходящую
+        self.next_act.setObjectName("act_icon_next")
         self.next_act.setToolTip("Next Window (Ctrl+Tab)")
 
         self.previous_act = QAction("&Previous", self, shortcut="Ctrl+Shift+Tab", triggered=self.mdi_area.activatePreviousSubWindow)
-        self.previous_act.setIcon(QIcon(resource_path("icons/previous.png")))  # Если нет, подбери подходящую
+        self.previous_act.setIcon(theme.icon("previous"))  # Если нет, подбери подходящую
+        self.previous_act.setObjectName("act_icon_previous")
         self.previous_act.setToolTip("Previous Window (Ctrl+Shift+Tab)")
 
         # Tools action
         self.selection_tool_act = QAction("Selection Tool", self, triggered=self.activateSelectionTool)
-        self.selection_tool_act.setIcon(QIcon(resource_path("icons/select.png")))
+        self.selection_tool_act.setIcon(theme.icon("select"))
+        self.selection_tool_act.setObjectName("act_icon_select")
         self.selection_tool_act.setToolTip("Selection Tool")
 
 
         # Help actions
         self.about_act = QAction("&About", self, triggered=self.about)
-        self.about_act.setIcon(QIcon(resource_path("icons/about.png")))
+        self.about_act.setIcon(theme.icon("about"))
+        self.about_act.setObjectName("act_icon_about")
         self.about_act.setToolTip("About")
 
     def createMenus(self):
@@ -349,9 +398,41 @@ class MainWindow(QMainWindow):
         window_menu.addAction(self.next_act)
         window_menu.addAction(self.previous_act)
 
+        # Settings menu: переключатель темы
+        settings_menu = self.menuBar().addMenu("&Settings")
+        theme_menu = settings_menu.addMenu("&Theme")
+        self._theme_group = QActionGroup(self)
+        for theme_name, label in (("system", "System"), ("light", "Light"), ("dark", "Dark")):
+            act = QAction(label, self, checkable=True)
+            act.setObjectName(f"theme_act_{theme_name}")
+            act.triggered.connect(lambda checked, name=theme_name: self.switchTheme(name))
+            self._theme_group.addAction(act)
+            theme_menu.addAction(act)
+        self.update_theme_menu_actions()
+
         # Help menu
         help_menu = self.menuBar().addMenu("&Help")
         help_menu.addAction(self.about_act)
+
+    def switchTheme(self, theme_name):
+        """Переключить тему оформления (палитра + иконки) и сохранить выбор в конфиг."""
+        theme.apply_theme(QApplication.instance(), theme_name)
+        if not self.config.has_section('General'):
+            self.config.add_section('General')
+        self.config.set('General', 'theme', theme_name)
+        save_config(self.config)
+        self.update_theme_menu_actions()
+        self.statusBar().showMessage(f"Theme: {theme_name}", 2000)
+
+    def update_theme_menu_actions(self):
+        """Отметить галочкой пункт темы, соответствующий конфигу."""
+        current = 'light'
+        try:
+            current = self.config['General'].get('theme', 'light') if 'General' in self.config else 'light'
+        except Exception:
+            pass
+        for act in self._theme_group.actions():
+            act.setChecked(act.objectName() == f"theme_act_{current}")
 
     def update_recent_files_menu(self):
         """Обновить подменю Recent Files."""

@@ -136,6 +136,16 @@ class CustomMdiSubWindow(QMdiSubWindow):
         max_height = max(150, viewport_size.height() - 50)
         self.resize(max_width, max_height)
 
+        # Применяем сохранённое состояние линеек (Editor.show_rulers)
+        show_rulers = False
+        if getattr(main_window, 'config', None) is not None:
+            try:
+                show_rulers = main_window.config['Editor'].getboolean('show_rulers', fallback=False)
+            except Exception:
+                show_rulers = False
+        if show_rulers:
+            self.editor_container.toggleRulers(True)
+
     def closeEvent(self, event):
         editor = self.editor_container.editor
         if isinstance(editor, ImageEditor) and editor.is_modified:
@@ -161,33 +171,6 @@ class CustomMdiSubWindow(QMdiSubWindow):
                 return
         event.accept()
 
-'''
-class CustomMdiSubWindow(QMdiSubWindow):
-    def __init__(self, main_window):
-        """Initialize a custom MDI subwindow."""
-        super().__init__()
-        self.main_window = main_window
-        self.editor_container = EditorContainer(self)
-        self.setWidget(self.editor_container)
-        self.setAttribute(Qt.WA_DeleteOnClose)
-
-    def closeEvent(self, event):
-        """Handle closing of the subwindow."""
-        if not self.editor_container.editor.is_modified:
-            event.accept()
-            return
-
-        reply = self.main_window.confirmSave(self.windowTitle())
-        if reply == "save":
-            if self.main_window.saveFile(self):
-                event.accept()
-            else:
-                event.ignore()
-        elif reply == "discard":
-            event.accept()
-        else:
-            event.ignore()
-'''
 class NewImageDialog(QDialog):
     def __init__(self, parent=None, width='800', height='600', dpi=150, units='Pixels'):
         """Initialize the new image dialog."""

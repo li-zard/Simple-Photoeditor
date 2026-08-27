@@ -1,6 +1,6 @@
 # Undo/Redo System
 
-Simple Photo Editor implements unlimited (per-stack) undo/redo using the **Command design pattern** with two stacks held by each [`ImageEditor`](../editor.py) instance.
+Simple Photo Editor implements undo/redo using the **Command design pattern** with two stacks held by each [`ImageEditor`](../editor.py) instance. History depth is bounded: [`executeCommand()`](../editor.py) keeps at most `UNDO_LIMIT` (20) commands per editor and drops the oldest.
 
 ## 1. Core Idea
 
@@ -28,7 +28,8 @@ editor.executeCommand(command)
     ├─ command.execute()
     ├─ undo_stack.append(command)
     ├─ redo_stack.clear()          # a new branch invalidates the redo history
-    └─ is_modified = True
+    ├─ is_modified = True
+    └─ trim undo_stack to UNDO_LIMIT (20)   # oldest commands dropped
 ```
 
 ### Undo — [`undo()`](../editor.py)
@@ -67,8 +68,8 @@ All commands live in [`commands.py`](../commands.py) and derive from the [`Comma
 | [`GrayscaleCommand`](../commands.py) | Image → Grayscale | OpenCV `RGBA2GRAY` → `GRAY2RGBA` | Color image |
 | [`CutCommand`](../commands.py) | Edit → Cut (Ctrl+X) | Copies selection to clipboard, fills it with `fill_color` (white by default), clears selection UI | Original image (selection is not re-created) |
 | [`PasteCommand`](../commands.py) | Edit → Paste (Ctrl+V) | Into selection: paints clipboard image. No selection: adds a floating [`MovableImageItem`](../scene.py) | Selection case: original image. Floating case: removes the item and restores prior floating items + image |
-| [`ResizeCommand`](../commands.py) | Image → Resize… (OK) | *(applied by the editor before pushing)* | Swaps back `old_image`, restores scene rect, refits view |
-| [`FixPasteCommand`](../commands.py) | Clicking empty canvas / saving with floating items | *(applied by the editor)* | Restores old image and re-adds the floating items at their recorded positions |
+| [`ResizeCommand`](../commands.py) | Image → Resize… (OK) | Scales the current image (`QImage.scaled`, smooth, aspect mode from `keep_aspect`) and applies it via `_apply()` — `setImage(keep_view=True)` + refit | Swaps back `old_image` and refits the view |
+| [`FixPasteCommand`](../commands.py) | Clicking empty canvas / saving with floating items | Bakes every floating item into `current_image` with a `QPainter` and removes the items from the scene | Restores old image and re-adds the floating items at their recorded positions |
 
 ## 4. Interaction with Live Preview
 
@@ -100,7 +101,7 @@ The `original_image_override` parameter (see e.g. [`AdjustmentsCommand.__init__`
 | New command executed | Pushed to undo; redo cleared |
 | Undo | Moves top of undo → redo |
 | Redo | Moves top of redo → undo |
-| Resize ([`resizeImage()`](../editor.py)) | Undo stack capped at 10 entries (oldest dropped) |
+| Any command ([`executeCommand()`](../editor.py)) | Undo stack trimmed to `UNDO_LIMIT` (20) entries; oldest dropped |
 | Image replaced via [`setImage()`](../editor.py) (outside a command) | Stacks **not** cleared automatically — commands still hold valid snapshots |
 
 ## 7. Extension Guide: Adding a New Edit Operation
@@ -138,7 +139,7 @@ def applyMyEffect(self):
 
 Rules of thumb:
 
-- Always snapshot in `__init__`, never in `execute()` (redo may run multiple times).
+- Always snapshot in `__init__`, never in `execute()` (redo may run multiple times). Lazy first-run snapshotting inside `execute()` — guarded by `if self.old_image is None`, as `ResizeCommand`/`FixPasteCommand` do — is an acceptable alternative.
 - Make `redo()` idempotent by deriving the result from the snapshot.
 - If the operation interacts with scene items (like paste), record and restore their state too.
 - Use `original_image_override` when the change originates from a previewing dialog.

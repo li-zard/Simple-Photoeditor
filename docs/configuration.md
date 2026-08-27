@@ -41,12 +41,15 @@ Writes the parser to the user config path. I/O errors are caught and printed; th
 
 ### When settings are written
 
-The in-memory `config` object is persisted at two points:
+The in-memory `config` object is persisted at three points:
 
 - **Immediately** after every MRU update: [`MainWindow.openFile()`](../main_window.py) calls [`save_config()`](../utils.py) right after [`add_recent_file()`](../utils.py), so the recent-files list survives a crash.
+- **Immediately** after a theme switch via **Settings → Theme** ([`switchTheme()`](../main_window.py)).
 - **On close**, in [`MainWindow.closeEvent()`](../main_window.py), which first updates:
 
 - `General.window_width` / `General.window_height` — current window size
+- `General.last_opened_file` — path of the active MDI sub-window's image (reopened on the next start)
+- `Editor.show_rulers` — ruler state of the active editor (`true`/`false`)
 - `LastImageSettings.*` — last New Image dialog values
 
 ## 3. INI Schema
@@ -55,17 +58,17 @@ The in-memory `config` object is persisted at two points:
 
 | Key | Type | Default | Written by | Used by |
 |-----|------|---------|------------|---------|
-| `theme` | str | `dark` | seeded only | *(reserved, not currently read)* |
+| `theme` | str | `dark` | seeded; **Settings → Theme** menu ([`switchTheme()`](../main_window.py)) persists the choice immediately | [`theme.init_theme()`](../theme.py) at startup; `system`/`light` → system palette, `dark` → dark palette + inverted icons |
 | `window_width` | int | `800` | [`closeEvent()`](../main_window.py) | [`main.py`](../main.py) initial window size |
 | `window_height` | int | `600` | [`closeEvent()`](../main_window.py) | [`main.py`](../main.py) initial window size |
-| `last_opened_file` | str | *(empty)* | *(legacy)* | read by [`main.py`](../main.py) but not applied |
+| `last_opened_file` | str | *(empty)* | [`closeEvent()`](../main_window.py) (active sub-window's path) | [`main.py`](../main.py) opens it at startup when no CLI argument was given |
 
 ### `[Editor]`
 
 | Key | Type | Default | Notes |
 |-----|------|---------|-------|
 | `default_zoom` | float | `1.0` | Seeded; not currently read back |
-| `show_rulers` | bool | `true` | Seeded; ruler state is per-session, not persisted |
+| `show_rulers` | bool | `true` | Applied to every new MDI sub-window by [`CustomMdiSubWindow.__init__`](../widgets.py); persisted from the active editor by [`closeEvent()`](../main_window.py) |
 
 ### `[LastImageSettings]`
 
@@ -99,6 +102,7 @@ Behavior:
 theme = dark
 window_width = 1024
 window_height = 768
+last_opened_file = /home/user/pictures/photo.jpg
 
 [Editor]
 default_zoom = 1.0
