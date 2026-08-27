@@ -8,3 +8,4 @@ old_ver/
 dist/
 build/
 .gemini/
+venv/
