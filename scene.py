@@ -15,6 +15,10 @@ class ImageEditorScene(QGraphicsScene):
         self.setBackgroundBrush(QColor(200, 200, 200))
         self.handles = []
         self.active_handle = None
+        # Перемещение выделения целиком (этап 5.3): тащим прямоугольник
+        # за внутреннюю область, а не только за 8 маркеров.
+        self.moving_selection = False
+        self.move_offset = QPointF(0, 0)
         self.dash_offset = 0
         self.dash_timer = QTimer(self)
         self.dash_timer.timeout.connect(self.updateDash)
@@ -75,6 +79,28 @@ class ImageEditorScene(QGraphicsScene):
             pen.setDashOffset(self.dash_offset)
             self.selection_rect.setPen(pen)
 
+    def moveSelectionTo(self, scene_pos):
+        """Переместить выделение так, чтобы курсор сохранял точку захвата.
+
+        Размер прямоугольника сохраняется; topLeft ограничивается
+        пределами изображения (этап 5.3).
+        """
+        if not self.selection_rect:
+            return
+        scene_rect = self.sceneRect()
+        rect = self.selection_rect.rect()
+        new_top_left = scene_pos - self.move_offset
+        new_top_left.setX(max(scene_rect.left(),
+                              min(new_top_left.x(),
+                                  scene_rect.right() - rect.width())))
+        new_top_left.setY(max(scene_rect.top(),
+                              min(new_top_left.y(),
+                                  scene_rect.bottom() - rect.height())))
+        rect.moveTopLeft(new_top_left)
+        self.selection_rect.setRect(rect)
+        self.createHandles()
+        self.selectionChanged.emit(rect)
+
     def fixMovableItem(self, item, editor):
         """Fix a movable item onto the image."""
         if not isinstance(item, MovableImageItem) or not editor.current_image:
@@ -97,6 +123,15 @@ class ImageEditorScene(QGraphicsScene):
 
             editor = self.views()[0]
             if not editor.current_image:
+                return
+
+            # Клик внутри существующего выделения — тащим его целиком
+            # (этап 5.3), не начиная новое.
+            if (self.selection_rect is not None
+                    and not isinstance(item, MovableImageItem)
+                    and self.selection_rect.rect().contains(event.scenePos())):
+                self.moving_selection = True
+                self.move_offset = event.scenePos() - self.selection_rect.rect().topLeft()
                 return
 
             if not isinstance(item, MovableImageItem):
@@ -159,6 +194,8 @@ class ImageEditorScene(QGraphicsScene):
             self.updatePenWidth()
             self.createHandles()
             self.selectionChanged.emit(rect)
+        elif self.moving_selection and self.selection_rect:
+            self.moveSelectionTo(event.scenePos())
         elif self.selecting and self.start_pos and self.current_tool == "selection":
             current_pos = event.scenePos()
             current_pos.setX(max(scene_rect.left(), min(current_pos.x(), scene_rect.right())))
@@ -179,6 +216,8 @@ class ImageEditorScene(QGraphicsScene):
         if self.selecting and self.current_tool == "selection":
             self.selecting = False
             self.createHandles()
+        elif self.moving_selection:
+            self.moving_selection = False
         elif self.active_handle:
             self.active_handle = None
         super().mouseReleaseEvent(event)

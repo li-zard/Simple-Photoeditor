@@ -175,34 +175,34 @@ class NewImageDialog(QDialog):
     def __init__(self, parent=None, width='800', height='600', dpi=150, units='Pixels'):
         """Initialize the new image dialog."""
         super().__init__(parent)
-        self.setWindowTitle("New Image")
+        self.setWindowTitle(self.tr("New Image"))
         self.layout = QGridLayout(self)
 
         # Width
-        self.width_label = QLabel("Width:", self)
+        self.width_label = QLabel(self.tr("Width:"), self)
         self.width_edit = QLineEdit(width, self)
 
         # Height
-        self.height_label = QLabel("Height:", self)
+        self.height_label = QLabel(self.tr("Height:"), self)
         self.height_edit = QLineEdit(height, self)
 
         # Units
-        self.units_label = QLabel("Units:", self)
+        self.units_label = QLabel(self.tr("Units:"), self)
         self.units_combo = QComboBox(self)
         self.units_combo.addItems(["Pixels", "Centimeters", "Inches"])
         self.units_combo.setCurrentText(units)
 
         # DPI
-        self.dpi_label = QLabel("DPI:", self)
+        self.dpi_label = QLabel(self.tr("DPI:"), self)
         self.dpi_edit = QLineEdit(str(dpi), self)
 
         # Color Depth
-        self.color_depth_label = QLabel("Color depth:", self)
+        self.color_depth_label = QLabel(self.tr("Color depth:"), self)
         self.color_depth_combo = QComboBox(self)
         self.color_depth_combo.addItems(["24-bit color", "8-bit palette", "8-bit grayscale", "1-bit monochrome"])
 
         # Background Color
-        self.bg_color_button = QPushButton("Background color", self)
+        self.bg_color_button = QPushButton(self.tr("Background color"), self)
         self.bg_color_button.clicked.connect(self.choose_bg_color)
         self.bg_color_label = QLabel(self)
         self.bg_color = QColor(Qt.white)
@@ -272,7 +272,7 @@ class AdjustmentsDialog(QDialog):
         """Initialize the adjustments dialog."""
         super().__init__(parent)
         self.editor = editor
-        self.setWindowTitle("Adjust Image")
+        self.setWindowTitle(self.tr("Adjust Image"))
         self.editor.start_preview()
         self.layout = QVBoxLayout(self)
 
@@ -282,28 +282,28 @@ class AdjustmentsDialog(QDialog):
         self.preview_timer.setInterval(80)
         self.preview_timer.timeout.connect(self._do_preview_adjustments)
 
-        self.brightness_label = QLabel("Brightness: 0", self)
+        self.brightness_label = QLabel(self.tr("Brightness: 0"), self)
         self.brightness_slider = QSlider(Qt.Horizontal, self)
         self.brightness_slider.setRange(-100, 100)
         self.brightness_slider.setValue(0)
         self.brightness_slider.valueChanged.connect(self.updateBrightnessLabel)
         self.brightness_slider.valueChanged.connect(self.previewAdjustments)
 
-        self.contrast_label = QLabel("Contrast: 0", self)
+        self.contrast_label = QLabel(self.tr("Contrast: 0"), self)
         self.contrast_slider = QSlider(Qt.Horizontal, self)
         self.contrast_slider.setRange(-100, 100)
         self.contrast_slider.setValue(0)
         self.contrast_slider.valueChanged.connect(self.updateContrastLabel)
         self.contrast_slider.valueChanged.connect(self.previewAdjustments)
 
-        self.gamma_label = QLabel("Gamma: 1.0", self)
+        self.gamma_label = QLabel(self.tr("Gamma: 1.0"), self)
         self.gamma_slider = QSlider(Qt.Horizontal, self)
         self.gamma_slider.setRange(1, 500)
         self.gamma_slider.setValue(100)
         self.gamma_slider.valueChanged.connect(self.updateGammaLabel)
         self.gamma_slider.valueChanged.connect(self.previewAdjustments)
 
-        self.autobalance_button = QPushButton("Autobalance", self)
+        self.autobalance_button = QPushButton(self.tr("Autobalance"), self)
         self.autobalance_button.setCheckable(True)
         self.autobalance_button.clicked.connect(self.previewAdjustments)
 
@@ -364,18 +364,18 @@ class ResizeDialog(QDialog):
     def __init__(self, current_width, current_height, parent=None):
         """Initialize the resize dialog."""
         super().__init__(parent)
-        self.setWindowTitle("Resize Image")
+        self.setWindowTitle(self.tr("Resize Image"))
         self.current_width = current_width
         self.current_height = current_height
         self.layout = QGridLayout(self)
 
-        self.width_label = QLabel("Width:", self)
+        self.width_label = QLabel(self.tr("Width:"), self)
         self.width_edit = QLineEdit(str(current_width), self)
-        self.height_label = QLabel("Height:", self)
+        self.height_label = QLabel(self.tr("Height:"), self)
         self.height_edit = QLineEdit(str(current_height), self)
-        self.percent_label = QLabel("Percent:", self)
+        self.percent_label = QLabel(self.tr("Percent:"), self)
         self.percent_edit = QLineEdit("100", self)  # 100% by default
-        self.aspect_ratio_checkbox = QCheckBox("Keep Aspect Ratio", self)
+        self.aspect_ratio_checkbox = QCheckBox(self.tr("Keep Aspect Ratio"), self)
         self.aspect_ratio_checkbox.setChecked(True)  # Default On
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
@@ -460,7 +460,7 @@ class RotationDialog(QDialog):
     def __init__(self, editor, parent=None):
         super().__init__(parent)
         self.editor = editor
-        self.setWindowTitle("Precise Rotation")
+        self.setWindowTitle(self.tr("Precise Rotation"))
         self.editor.start_preview()
 
         # Debounce предпросмотра поворота: пересчёт не чаще, чем раз в 80 мс
@@ -473,7 +473,7 @@ class RotationDialog(QDialog):
 
         # Angle Display
         angle_layout = QHBoxLayout()
-        angle_label = QLabel("Angle:", self)
+        angle_label = QLabel(self.tr("Angle:"), self)
         self.angle_spinbox = QSpinBox(self)
         self.angle_spinbox.setRange(-180, 180)
         self.angle_spinbox.setValue(0)

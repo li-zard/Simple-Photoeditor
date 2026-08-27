@@ -154,6 +154,37 @@ class ImageEditor(QGraphicsView):
         self.scene.update()
         self.viewport().update()
 
+    def applyZoom(self, factor):
+        """Применить множитель масштаба (общая логика zoomIn/zoomOut/wheelEvent).
+
+        Якорь трансформации AnchorUnderMouse (см. __init__) обеспечивает
+        зум с центром на курсоре. Масштаб ограничен диапазоном 2%–2000%.
+        """
+        if not self.image_item:
+            return
+        self.zoom_factor = max(0.02, min(20.0, self.zoom_factor * factor))
+        self.resetTransform()
+        self.scale(self.zoom_factor, self.zoom_factor)
+        self.updateWindowTitle()
+        self.scene.update()
+        self.viewport().update()
+        if self.rulers_visible:
+            self.parent().updateRulerLayout()
+
+    def wheelEvent(self, event):
+        """Ctrl+колесо — плавный зум под курсором (этап 5.1).
+
+        Без Ctrl — обычная прокрутка (передаётся базовому классу).
+        """
+        if event.modifiers() & Qt.ControlModifier:
+            if not self.image_item:
+                event.ignore()
+                return
+            steps = event.angleDelta().y() / 120.0
+            self.applyZoom(1.25 ** steps)
+            event.accept()
+        else:
+            super().wheelEvent(event)
 
     def undo(self):
         """Undo last operation"""
@@ -211,29 +242,11 @@ class ImageEditor(QGraphicsView):
 
     def zoomIn(self):
         """Zoom in by 25%."""
-        if not self.image_item:
-            return
-        self.zoom_factor *= 1.25
-        self.resetTransform()
-        self.scale(self.zoom_factor, self.zoom_factor)
-        self.updateWindowTitle()
-        self.scene.update()
-        self.viewport().update()
-        if self.rulers_visible:
-            self.parent().updateRulerLayout()
+        self.applyZoom(1.25)
 
     def zoomOut(self):
         """Zoom out by 25%."""
-        if not self.image_item:
-            return
-        self.zoom_factor /= 1.25
-        self.resetTransform()
-        self.scale(self.zoom_factor, self.zoom_factor)
-        self.updateWindowTitle()
-        self.scene.update()
-        self.viewport().update()
-        if self.rulers_visible:
-            self.parent().updateRulerLayout()
+        self.applyZoom(1 / 1.25)
 
     def actualSize(self):
         """Reset zoom to 1:1."""

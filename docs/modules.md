@@ -12,6 +12,7 @@ The application bootstrap script. Runs only under `if __name__ == "__main__":`.
 
 1. Configure logging: level from the `PHOTOEDITOR_LOGLEVEL` environment variable (default `WARNING`), format `время уровень [имя] сообщение`.
 2. Create [`QApplication(sys.argv)`](../main.py) and set the window icon from `icons/icon.ico` (resolved via [`resource_path()`](../utils.py)).
+3. Single-instance guard (Roadmap stage 5): [`SingleInstance.activate()`](../singleinstance.py) — a second process forwards its CLI file path to the running instance over a `QLocalSocket` and exits; the first instance listens on a `QLocalServer` and connects its `fileOpened(str)` signal to [`MainWindow.openFile()`](../main_window.py).
 4. Enable High-DPI attributes (`AA_EnableHighDpiScaling`, `AA_UseHighDpiPixmaps`) **before** creating the application — without them the UI (including MDI title bars) renders small and gets stretched blurry on scaled displays.
 5. Load configuration with [`load_config()`](../utils.py).
 6. Initialize the theme via [`theme.init_theme(app, config)`](../theme.py) (`General.theme`: `system`/`light` → system palette, `dark` → dark palette + inverted icons).
@@ -158,7 +159,9 @@ Antialiasing + smooth pixmap transform rendering, `ScrollHandDrag` mode, full vi
 
 #### Zoom & navigation
 
-- [`zoomIn()`](../editor.py) / [`zoomOut()`](../editor.py) — multiply/divide `zoom_factor` by 1.25 and re-apply the transform.
+- [`applyZoom(factor)`](../editor.py) — the single zoom entry point (Roadmap stage 5): multiplies `zoom_factor` by `factor`, clamps the scale to 2%–2000%, re-applies the transform, and refreshes the title and rulers.
+- [`zoomIn()`](../editor.py) / [`zoomOut()`](../editor.py) — thin wrappers over `applyZoom(1.25)` / `applyZoom(1/1.25)`.
+- [`wheelEvent()`](../editor.py) — Ctrl+wheel zooms smoothly centered on the cursor (`1.25 ** steps` from `angleDelta()`; the `AnchorUnderMouse` anchor keeps the point under the cursor fixed); a plain wheel event is forwarded to the base class as scrolling.
 - [`actualSize()`](../editor.py) — reset to 1:1.
 - [`fitInViewWithRulers()`](../editor.py) — fits the scene rect into the viewport (minus ruler margins when visible) and recomputes `zoom_factor` from `transform().m11()`.
 - [`resetView()`](../editor.py) — plain fit.
@@ -230,11 +233,12 @@ Custom scene providing selection and item interaction on top of the displayed im
 | `selection_rect` | `QGraphicsRectItem` for the current selection |
 | `selecting` / `start_pos` | Rubber-band drag state |
 | `handles` / `active_handle` | Eight resize handles + the one being dragged |
+| `moving_selection` / `move_offset` | Whole-selection drag state: active flag + grab-point offset (Roadmap stage 5) |
 | `dash_offset` / `dash_timer` | Animated "marching ants" dash offset (100 ms timer) |
 
 #### Signal
 
-[`selectionChanged = pyqtSignal(QRectF)`](../scene.py) — emitted whenever the selection is created or resized; consumed by [`ImageEditor.updateStatusBar()`](../editor.py).
+[`selectionChanged = pyqtSignal(QRectF)`](../scene.py) — emitted whenever the selection is created, resized or moved; consumed by [`ImageEditor.updateStatusBar()`](../editor.py).
 
 #### Methods
 
@@ -242,9 +246,10 @@ Custom scene providing selection and item interaction on top of the displayed im
 - [`createHandles()`](../scene.py) — (re)creates 8 red square handles (corners + edge midpoints) sized adaptively from the image size (`max(12, min(30, img_size // 150))`), each flagged movable with a `handle_type` stored in item data and `ZValue` 200.
 - [`updatePenWidth()`](../scene.py) — scales the dashed pen width with image size (`max(2, min(5, img_size // 1000))`).
 - [`fixMovableItem(item, editor)`](../scene.py) — draws a floating item's pixmap onto `editor.current_image` at its position, calls [`editor.setImage()`](../editor.py), marks modified.
-- [`mousePressEvent()`](../main_window.py) — if a handle was clicked, marks it active; otherwise fixes any selected floating items, clears the previous selection and handles, and starts a new rubber-band selection.
-- [`mouseMoveEvent()`](../scene.py) — drags the active handle (clamped to the scene rect, rect re-normalized) or extends the rubber band; emits `selectionChanged`.
-- [`mouseReleaseEvent()`](../scene.py) — finalizes the selection by (re)creating handles.
+- [`moveSelectionTo(scene_pos)`](../scene.py) — moves the whole selection rectangle keeping the grab point under the cursor; the top-left is clamped so the rectangle stays inside the scene; handles are recreated and `selectionChanged` re-emitted (Roadmap stage 5).
+- [`mousePressEvent()`](../scene.py) — if a handle was clicked, marks it active; if the press falls inside an existing selection (and not on a floating item), starts a whole-selection drag (`moving_selection`); otherwise fixes any selected floating items, clears the previous selection and handles, and starts a new rubber-band selection.
+- [`mouseMoveEvent()`](../scene.py) — drags the active handle (clamped to the scene rect, rect re-normalized), moves the whole selection, or extends the rubber band; emits `selectionChanged`.
+- [`mouseReleaseEvent()`](../scene.py) — finalizes the selection by (re)creating handles; ends a whole-selection drag.
 
 ### `MovableImageItem(QGraphicsPixmapItem)`
 
@@ -402,7 +407,25 @@ See [Configuration](configuration.md) for the full INI schema.
 
 ---
 
-## 10. Cross-Module Interactions Summary
+## 10. [`singleinstance.py`](../singleinstance.py) — Single-Instance Guard (Stage 5)
+
+A leaf module (imports only `PyQt5.QtNetwork`) ensuring that just one application instance runs — the prerequisite for file associations. Module constant: `SERVER_NAME = "SimplePhotoEditor"`.
+
+### `SingleInstance(QObject)`
+
+- Signal: [`fileOpened = pyqtSignal(str)`](../singleinstance.py) — carries a file path received from a second instance.
+- [`activate(file_path="")`](../singleinstance.py) — the startup gate, called from `main.py` right after `QApplication` creation:
+  - Tries to connect a `QLocalSocket` to `SERVER_NAME`; on success writes the UTF-8 path, waits for the flush, and returns `False` — the caller exits, the path now belongs to the running instance.
+  - Otherwise calls `QLocalServer.removeServer()` (cleans the stale socket left by a crashed previous instance), starts listening, connects `newConnection`, and returns `True`.
+  - If listening fails for an unexpected reason, logs the error and still returns `True` — the app runs without the single-instance guarantee rather than refusing to start.
+- [`shutdown()`](../singleinstance.py) — closes the server (used by tests).
+- [`_on_new_connection()`](../singleinstance.py) / [`_read_path()`](../singleinstance.py) — accept the pending connection, read the path on `readyRead`, emit `fileOpened`, and dispose of the socket.
+
+Wiring in [`main.py`](../main.py): `single.fileOpened.connect(window.openFile)` — a file double-clicked in Explorer while the app is running opens as a new MDI sub-window of the existing instance.
+
+---
+
+## 11. Cross-Module Interactions Summary
 
 | Interaction | Mechanism |
 |-------------|-----------|
@@ -414,10 +437,11 @@ See [Configuration](configuration.md) for the full INI schema.
 | Floating paste → baked | Scene/editor mouse events → `fixMovableItem()` / `fixPastedItems()` → `FixPasteCommand` |
 | Close → save prompt | `CustomMdiSubWindow.closeEvent` / `MainWindow.closeEvent` → `confirmSave()` → `saveFile()` |
 | Config lifecycle | `main.py` load → `MainWindow` mutations → `closeEvent` → `save_config()` |
+| Second instance → running instance | `SingleInstance.fileOpened` signal → `MainWindow.openFile()` (new MDI sub-window) |
 
 ---
 
-## 11. [`tests/`](../tests) — Test Suite (Stage 4)
+## 12. [`tests/`](../tests) — Test Suite (Stages 4–5)
 
 Headless pytest suite; run with `python3 -m pytest` from the project root (configured by [`pytest.ini`](../pytest.ini)).
 
@@ -446,3 +470,10 @@ Every command is exercised through the full execute → undo → redo cycle with
 ### [`test_utils.py`](../tests/test_utils.py) — MRU list
 
 `add_recent_file()` / `get_recent_files()`: insertion order (most recent first), dedup (reopening moves to top), 5-entry cap (oldest evicted), non-existent and empty paths ignored, `file1…file5` key layout.
+
+### [`test_stage5.py`](../tests/test_stage5.py) — stage-5 features
+
+- `TestWheelZoom` — synthesizes `QWheelEvent`s: Ctrl+wheel multiplies the zoom by 1.25 per step (and back), a plain wheel event does not zoom, the scale is clamped to 2%–2000%, and `zoomIn()`/`zoomOut()` route through `applyZoom()`.
+- `TestSingleInstance` — on a dedicated server name: the first `activate()` returns `True`; a second instance's `activate()` returns `False` while the first receives the path via `fileOpened` (event loop pumped with `processEvents()`); the server can be re-activated after `shutdown()`.
+- `TestMoveSelection` — `moveSelectionTo()` preserves the rectangle size, clamps it to the image bounds, and emits `selectionChanged`.
+- `TestI18n` — with no translator installed, action texts and dialog titles are unchanged (the `tr()` wrapping is transparent).

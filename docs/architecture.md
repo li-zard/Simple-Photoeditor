@@ -46,7 +46,8 @@ main.py ──► main_window.py ──► editor.py ──► scene.py
    │              ├──► commands.py ──► imageops.py
    │              ├──► theme.py ──► utils.py (deferred)
    │              └──► utils.py
-   └──► utils.py
+   ├──► utils.py
+   └──► singleinstance.py (QtNetwork only)
 
 (commands.py also imports editor.py and scene.py at module level;
  editor.py breaks the resulting cycles with deferred, inside-method
@@ -62,6 +63,7 @@ Key points:
 - [`editor.py`](../editor.py) sits at the center of the import cycles (commands ↔ editor, widgets ↔ editor), so it defers its imports of `commands.py`, `imageops.py`, and `widgets.py` into method bodies.
 - [`widgets.py`](../widgets.py) imports [`ImageEditor`](../editor.py)/[`EditorContainer`](../editor.py) and [`AdjustmentsCommand`](../commands.py).
 - [`imageops.py`](../imageops.py) and [`theme.py`](../theme.py) are leaf modules (NumPy/PyQt5/Pillow only), reusable and testable in isolation; `theme.py` defers its `utils` import into [`icon()`](../theme.py).
+- [`singleinstance.py`](../singleinstance.py) is a leaf module (QtNetwork only), added in Roadmap stage 5; `main.py` activates it right after creating the `QApplication`.
 
 ## 3. Layers and Responsibilities
 
@@ -70,13 +72,14 @@ Key points:
 - Enables High-DPI attributes (`AA_EnableHighDpiScaling`, `AA_UseHighDpiPixmaps`) before creating the [`QApplication`](../main.py) — prevents blurry stretched rendering (including MDI title bars) on scaled displays; sets the window icon.
 - Loads configuration via [`load_config()`](../utils.py).
 - Initializes the theme via [`theme.init_theme()`](../theme.py) (`General.theme`: `system`/`light` → system palette, `dark` → dark palette + inverted icons).
+- Single-instance guard (Roadmap stage 5): [`SingleInstance.activate()`](../singleinstance.py) runs right after `QApplication` creation. A second process forwards its CLI file path over a `QLocalSocket` to the running instance and exits; the first instance listens on a `QLocalServer` and opens forwarded paths via its `fileOpened(str)` signal connected to [`MainWindow.openFile()`](../main_window.py). A stale socket left by a crashed instance is cleaned with `QLocalServer.removeServer()` before `listen()`.
 - Instantiates [`MainWindow`](../main_window.py), applies persisted window size, opens the CLI-argument file or — in its absence — `General.last_opened_file` from the previous session, and starts the event loop.
 
 ### 3.2 Application UI layer — [`main_window.py`](../main_window.py)
 
 [`MainWindow`](../main_window.py) owns everything the user sees at the top level:
 
-- **Actions** — one [`QAction`](../main_window.py) per operation (New, Open, Save, Print, Scan, Undo, Redo, Cut, Copy, Paste, Crop, Resize, Select All, Zoom In/Out, Fit, Actual Size, Rulers, Rotate, Flip, Grayscale, Adjustments, Tile, Cascade, Next, Previous, Selection Tool, About). Each action binds a keyboard shortcut, an icon from `icons/`, and a handler method.
+- **Actions** — one [`QAction`](../main_window.py) per operation (New, Open, Save, Print, Scan, Undo, Redo, Cut, Copy, Paste, Crop, Resize, Select All, Zoom In/Out, Fit, Actual Size, Rulers, Rotate, Flip, Grayscale, Adjustments, Tile, Cascade, Next, Previous, Selection Tool, About). Each action binds a keyboard shortcut, an icon from `icons/`, and a handler method. Since Roadmap stage 5 all user-visible strings here (and in the dialogs of [`widgets.py`](../widgets.py)) are wrapped in `self.tr()`, ready for `QTranslator`-based localization.
 - **Menus** — File, Edit, View, Image (with Rotate/Flip submenus), Settings (with the **Theme** radio submenu: System/Light/Dark), Window, Help, plus a dynamic **Recent Files** submenu rebuilt by [`update_recent_files_menu()`](../main_window.py).
 - **Theme switching** — [`switchTheme()`](../main_window.py) live-applies the palette and inverted icons via [`theme.apply_theme()`](../theme.py) and persists `General.theme` immediately.
 - **Toolbars** — File, Edit, View, Image, Tools.
@@ -89,7 +92,7 @@ Key points:
 - [`ImageEditor`](../editor.py) (a `QGraphicsView`) is the per-image editing surface:
   - Holds `current_image` / `original_image` (`QImage`), the `image_item` (`QGraphicsPixmapItem`), zoom factor, modification flag, and the undo/redo stacks.
   - [`setImage(image, keep_view=False)`](../editor.py) is the single entry point for putting a `QImage` on screen. New images (`keep_view=False`) reset zoom, refit the view and clear the modified flag; edits and undo/redo (`keep_view=True`) preserve the current zoom and scroll position.
-  - Zoom/navigation: [`zoomIn()`](../editor.py), [`zoomOut()`](../editor.py), [`actualSize()`](../editor.py), [`fitInViewWithRulers()`](../editor.py).
+  - Zoom/navigation: [`zoomIn()`](../editor.py), [`zoomOut()`](../editor.py), [`actualSize()`](../editor.py), [`fitInViewWithRulers()`](../editor.py) — the first two funnel through [`applyZoom()`](../editor.py), the single zoom entry point (Roadmap stage 5) that clamps the scale to 2%–2000%; [`wheelEvent()`](../editor.py) maps Ctrl+wheel to smooth zooming centered on the cursor (via the `AnchorUnderMouse` anchor), while a plain wheel event still scrolls.
   - Command execution: [`executeCommand()`](../editor.py) runs a command, pushes it onto the undo stack, and trims the stack to `UNDO_LIMIT` (20).
   - Live-preview mechanism for dialogs: [`start_preview()`](../editor.py) / [`preview_rotation()`](../editor.py) / [`preview_adjustments()`](../editor.py) / [`cancel_preview()`](../editor.py) / [`apply_rotation()`](../editor.py) / [`apply_adjustments()`](../editor.py).
   - Pasted-item management: [`fixPastedItems()`](../editor.py), [`applyAllPastedItems()`](../editor.py).
@@ -100,6 +103,7 @@ Key points:
 - [`ImageEditorScene`](../scene.py) (a `QGraphicsScene`) implements the interactive behavior:
   - Rubber-band selection with an animated dashed rectangle ([`updateDash()`](../scene.py) driven by a 100 ms `QTimer`).
   - Eight resize handles around the selection ([`createHandles()`](../scene.py)), draggable and clamped to the scene rect.
+  - Moving the selection as a whole (Roadmap stage 5): a press inside an existing selection starts a drag (`moving_selection`); [`moveSelectionTo()`](../scene.py) keeps the grab point under the cursor and clamps the rectangle to the scene bounds.
   - Fixing pasted items into the base image ([`fixMovableItem()`](../scene.py)).
   - Emits a custom [`selectionChanged(QRectF)`](../scene.py) signal consumed by the editor's status-bar updater.
 - [`MovableImageItem`](../scene.py) (a `QGraphicsPixmapItem`) represents a pasted image floating above the canvas: movable, selectable, constrained to the scene bounds.

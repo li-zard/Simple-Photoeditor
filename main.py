@@ -35,6 +35,14 @@ if __name__ == "__main__":  # noqa: E402 (импорты PyQt должны ид�
     app = QApplication(sys.argv)
     app.setWindowIcon(QIcon(resource_path("icons/icon.ico")))
 
+    # Одноэкземплярность (этап 5.2): второй процесс отправляет путь
+    # первому и завершается; первый принимает путь через fileOpened.
+    from singleinstance import SingleInstance
+    single = SingleInstance()
+    cli_file = sys.argv[1] if len(sys.argv) > 1 else ""
+    if not single.activate(cli_file):
+        sys.exit(0)  # путь передан работающему экземпляру
+
     # Load configuration from file
     config = load_config()
 
@@ -44,6 +52,7 @@ if __name__ == "__main__":  # noqa: E402 (импорты PyQt должны ид�
 
     # Create the main window
     window = MainWindow(config)
+    single.fileOpened.connect(window.openFile)
 
     # Apply configuration settings for window size
     if 'General' in config:

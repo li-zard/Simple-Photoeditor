@@ -36,6 +36,20 @@ Platform notes:
 - **Windows**: everything works from pip, including scanning when `pywin32` is installed.
 - **Grayscale** requires `cv2`; without it the action warns ([`CV2_AVAILABLE`](../commands.py)).
 
+### Troubleshooting: `Cannot mix incompatible Qt library (5.15.x) with this library (5.15.y)`
+
+The pip wheel `PyQt5-Qt5` bundles its own copy of Qt. On Linux with a system Qt installed (e.g. Arch's `qt5-base`), the bundled image-format plugin `libqpdf.so` depends on `libQt5Pdf.so.5`, which is **not shipped in the wheel** — the dynamic linker then resolves it to the system Qt, and two different Qt builds end up loaded in one process. Qt detects this and aborts (`core dumped`) right after loading image-format plugins.
+
+Fix — quarantine the plugin (PDF image loading is not needed by this app):
+
+```bash
+mkdir -p venv/_disabled_plugins
+mv venv/lib/python3.12/site-packages/PyQt5/Qt5/plugins/imageformats/libqpdf.so \
+   venv/_disabled_plugins/
+```
+
+Re-apply after every `pip install --force-reinstall PyQt5-Qt5` / venv rebuild. Alternative: use the distro's PyQt5 package instead of the pip wheel (it links against the single system Qt and has no such conflict).
+
 ## 3. Packaging with PyInstaller
 
 The official build command (see [`GEMINI.md`](../GEMINI.md)):
