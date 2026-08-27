@@ -414,3 +414,35 @@ See [Configuration](configuration.md) for the full INI schema.
 | Floating paste → baked | Scene/editor mouse events → `fixMovableItem()` / `fixPastedItems()` → `FixPasteCommand` |
 | Close → save prompt | `CustomMdiSubWindow.closeEvent` / `MainWindow.closeEvent` → `confirmSave()` → `saveFile()` |
 | Config lifecycle | `main.py` load → `MainWindow` mutations → `closeEvent` → `save_config()` |
+
+---
+
+## 11. [`tests/`](../tests) — Test Suite (Stage 4)
+
+Headless pytest suite; run with `python3 -m pytest` from the project root (configured by [`pytest.ini`](../pytest.ini)).
+
+### [`conftest.py`](../tests/conftest.py) — fixtures & helpers
+
+- Sets `QT_QPA_PLATFORM=offscreen` **before** importing PyQt5 — no X server required (CI-friendly).
+- Adds the project root to `sys.path` so application modules import cleanly.
+- [`make_gradient(w, h)`](../tests/conftest.py:24) — deterministic RGB gradient (`Format_RGB32`); R/G span the full 0–255 range so autobalance provably changes pixels.
+- [`make_solid_image(w, h, rgb)`](../tests/conftest.py:42) — flat-color rectangle for paste tests.
+- [`image_bytes(image)`](../tests/conftest.py:49) — pixel bytes in `Format_RGBA8888` (stride-aware) for exact byte-level image comparison.
+- [`qapp`](../tests/conftest.py:66) — session-scoped `QApplication`.
+- [`editor`](../tests/conftest.py:79) — `ImageEditor` with the gradient loaded, hosted in a bare `QMainWindow` (commands call `editor.window().statusBar()`); `updateWindowTitle()` exits early because the parent is not a `CustomMdiSubWindow`.
+
+### [`test_commands.py`](../tests/test_commands.py) — undo/redo contracts
+
+Every command is exercised through the full execute → undo → redo cycle with byte-level assertions:
+
+- `CropCommand` — cropped bytes equal the source rect; undo restores exact bytes.
+- `TransformCommand` — 90° rotation swaps W↔H and maps corner pixels correctly; horizontal flip; undo restores bytes.
+- `AdjustmentsCommand` — brightness/contrast/gamma/autobalance each change the image and restore on undo; **redo is idempotent** (recomputed from the stored `original_image`).
+- `CutCommand` — clipboard image equals the cut region; the hole is filled with `fill_color`; selection rect and handles are removed from the scene; no-op without a selection.
+- `PasteCommand` — into selection (pixels replaced, no floating items) and as a floating `MovableImageItem` (canvas untouched, item at (10,10)); undo/redo manage `pasted_items`.
+- `ResizeCommand` / `FixPasteCommand` — Stage-3 `execute()` contract: exact sizes, `keep_aspect` behavior, baking floating items and restoring them (with movable flags) on undo.
+- `TestEditorHistory` — `executeCommand()` stack semantics, `UNDO_LIMIT = 20` eviction, new command clears the redo stack.
+
+### [`test_utils.py`](../tests/test_utils.py) — MRU list
+
+`add_recent_file()` / `get_recent_files()`: insertion order (most recent first), dedup (reopening moves to top), 5-entry cap (oldest evicted), non-existent and empty paths ignored, `file1…file5` key layout.

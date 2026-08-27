@@ -61,20 +61,21 @@
 
 ---
 
-## Этап 4. Тесты — 🟡
+## Этап 4. Тесты — 🟢
 
 Цель: зафиксировать поведение команд перед дальнейшими изменениями.
 
-- [ ] Создать `tests/test_commands.py`: синтетический `QImage` (например, градиент 100×100), `QT_QPA_PLATFORM=offscreen` для headless-запуска:
-  - [ ] `CropCommand`: execute/undo/redo, сравнение байтов изображения;
-  - [ ] `TransformCommand`: поворот 90° меняет W↔H, undo восстанавливает;
-  - [ ] `AdjustmentsCommand`: яркость/контраст/гамма/autobalance идемпотентны при redo;
-  - [ ] `CutCommand`/`PasteCommand`: состояние буфера и сцены;
-  - [ ] `ResizeCommand`/`FixPasteCommand` после этапа 3.
-- [ ] Тест утилит: [`add_recent_file()`](../utils.py:71) / [`get_recent_files()`](../utils.py:96) — порядок, дедупликация, лимит 5, фильтр несуществующих.
+- [x] Создать [`tests/test_commands.py`](../tests/test_commands.py): синтетический `QImage` (градиент 100×100 из [`make_gradient()`](../tests/conftest.py:24)), `QT_QPA_PLATFORM=offscreen` задаётся в [`tests/conftest.py`](../tests/conftest.py:20) для headless-запуска:
+  - [x] [`CropCommand`](../commands.py:29): execute/undo/redo, побайтовое сравнение через [`image_bytes()`](../tests/conftest.py:49);
+  - [x] [`TransformCommand`](../commands.py:81): поворот 90° меняет W↔H (плюс проверка угловых пикселей), undo восстанавливает; горизонтальный флип;
+  - [x] [`AdjustmentsCommand`](../commands.py:50): яркость/контраст/гамма/autobalance меняют изображение и восстанавливаются при undo; redo идемпотентен (пересчёт из сохранённого `original_image`);
+  - [x] [`CutCommand`](../commands.py:205)/[`PasteCommand`](../commands.py:150): буфер обмена (содержимое = вырезанная область), заливка `fill_color`, удаление выделения из сцены; вставка в выделение и плавающим элементом, undo/redo состояния `pasted_items`;
+  - [x] [`ResizeCommand`](../commands.py:243)/[`FixPasteCommand`](../commands.py:282) после этапа 3: мутация в `execute()`, keep_aspect, запекание/восстановление плавающих элементов.
+- [x] Тест утилит: [`add_recent_file()`](../utils.py:75) / [`get_recent_files()`](../utils.py:100) — порядок, дедупликация, лимит 5, фильтр несуществующих ([`tests/test_utils.py`](../tests/test_utils.py)).
+- [x] Инфраструктура: [`pytest.ini`](../pytest.ini) (testpaths=tests), `pytest==9.0.3` добавлен в [`requirements-dev.txt`](../requirements-dev.txt); фикстуры [`qapp`](../tests/conftest.py:66) (session) и [`editor`](../tests/conftest.py:79) (ImageEditor в QMainWindow — команды обращаются к `editor.window().statusBar()`).
 - [ ] Опционально: CI (GitHub Actions) — `pip install -r requirements.txt && pytest`.
 
-**Критерии приёмки:** `pytest` зелёный; новые команды невозможно добавить без падающего теста на undo/redo.
+**Критерии приёмки:** ✅ `pytest` зелёный — **36 passed** (26 тестов команд + 10 MRU); новые команды невозможно добавить без падающего теста на undo/redo.
 
 ---
 
@@ -194,7 +195,7 @@ ISCC installer\installer.iss
 | 1 | Чистка кода | 🟢 | — |
 | 2 | Корректность/UX | 🟢🟡 | — |
 | 3 | Архитектура | 🟡 | желательно после 1 |
-| 4 | Тесты | 🟡 | желательно после 3 |
+| 4 | Тесты | 🟢 | желательно после 3 |
 | 5 | Функции (zoom, single-instance, …) | 🟡🔴 | 5.2 до этапа 6 |
 | 6 | Inno Setup + ассоциации | 🟡 | 5.2 (одноэкземплярность) |
 
