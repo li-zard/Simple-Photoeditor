@@ -5,7 +5,7 @@ from editor import ImageEditor  # Импорт из editor.py
 
 class ImageEditorScene(QGraphicsScene):
     selectionChanged = pyqtSignal(QRectF)
-    
+
     def __init__(self, parent=None):
         """Initialize the image editor scene."""
         super().__init__(parent)
@@ -20,7 +20,7 @@ class ImageEditorScene(QGraphicsScene):
         self.dash_timer = QTimer(self)
         self.dash_timer.timeout.connect(self.updateDash)
         self.dash_timer.start(100)
-        
+
     def updateDash(self):
         """Update the dashed line animation for the selection rectangle."""
         if self.selection_rect:
@@ -85,7 +85,7 @@ class ImageEditorScene(QGraphicsScene):
         painter = QPainter(editor.current_image)
         painter.drawPixmap(int(pos.x()), int(pos.y()), pixmap)
         painter.end()
-        editor.setImage(editor.current_image)
+        editor.setImage(editor.current_image, keep_view=True)
         editor.is_modified = True
 
     def mousePressEvent(self, event):

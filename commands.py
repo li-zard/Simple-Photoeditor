@@ -36,7 +36,7 @@ class CropCommand(Command):
     def execute(self):
         """Crop the image to the specified rectangle."""
         self.cropped_image = self.original_image.copy(self.rect)
-        self.editor.setImage(self.cropped_image)
+        self.editor.setImage(self.cropped_image, keep_view=True)
         self.editor.window().statusBar().showMessage(f"Image cropped to {self.rect.width()}x{self.rect.height()}", 2000)
 
     def redo(self):
@@ -44,7 +44,7 @@ class CropCommand(Command):
 
     def undo(self):
         """Restore the original image."""
-        self.editor.setImage(self.original_image)
+        self.editor.setImage(self.original_image, keep_view=True)
         self.editor.window().statusBar().showMessage("Crop undone", 2000)
 
 class AdjustmentsCommand(Command):
@@ -116,18 +116,20 @@ class AdjustmentsCommand(Command):
             enhancer = ImageEnhance.Contrast(pil_img)
             pil_img = enhancer.enhance(1.0 + self.contrast)
         if self.gamma != 1.0:
-            enhancer = ImageEnhance.Brightness(pil_img)
-            pil_img = enhancer.enhance(self.gamma)
+            # Настоящая гамма: степенная кривая ((px / 255) ** (1 / gamma)) * 255 через LUT
+            inv_gamma = 1.0 / self.gamma
+            lut = ((np.arange(256, dtype=np.float32) / 255.0) ** inv_gamma * 255.0 + 0.5).astype(np.uint8)
+            pil_img = pil_img.point(lut.tolist() * 4)  # RGBA: одна кривая на все каналы (альфа 255 → 255)
 
         self.adjusted_image = QImage(pil_img.tobytes(), image.width(), image.height(), image.bytesPerLine(), QImage.Format_RGB32)
-        self.editor.setImage(self.adjusted_image)
+        self.editor.setImage(self.adjusted_image, keep_view=True)
 
     def redo(self):
         self.execute()  # Повторяем действия execute
 
     def undo(self):
         """Restore the original image."""
-        self.editor.setImage(self.original_image)
+        self.editor.setImage(self.original_image, keep_view=True)
 
 class TransformCommand(Command):
     def __init__(self, editor, degrees=None, horizontal_flip=None, original_image_override=None):
@@ -151,11 +153,11 @@ class TransformCommand(Command):
         elif self.horizontal_flip is not None:
             image = image.mirrored(self.horizontal_flip, not self.horizontal_flip)
         self.transformed_image = image
-        self.editor.setImage(self.transformed_image)
+        self.editor.setImage(self.transformed_image, keep_view=True)
 
     def undo(self):
         """Restore the original image."""
-        self.editor.setImage(self.original_image)
+        self.editor.setImage(self.original_image, keep_view=True)
     def redo(self):
         self.execute()
 
@@ -188,11 +190,11 @@ class GrayscaleCommand(Command):
             QMessageBox.warning(self.editor.window(), "Error", "Failed to convert image to grayscale.")
             return
         logger.debug("Setting grayscale image")
-        self.editor.setImage(self.grayscale_image)
+        self.editor.setImage(self.grayscale_image, keep_view=True)
         self.editor.window().statusBar().showMessage("Converted to grayscale", 2000)
 
     def undo(self):
-        self.editor.setImage(self.original_image)
+        self.editor.setImage(self.original_image, keep_view=True)
         self.editor.window().statusBar().showMessage("Grayscale undone", 2000)
 
     def redo(self):
@@ -215,7 +217,7 @@ class PasteCommand(Command):
             painter.setRenderHint(QPainter.SmoothPixmapTransform)
             painter.drawImage(self.selection_rect.topLeft(), self.clipboard_image)
             painter.end()
-            self.editor.setImage(self.editor.current_image)
+            self.editor.setImage(self.editor.current_image, keep_view=True)
             self.editor.window().statusBar().showMessage("Image pasted into selection", 2000)
         else:
             pixmap = QPixmap.fromImage(self.clipboard_image)
@@ -239,7 +241,7 @@ class PasteCommand(Command):
     def undo(self):
         """Undo the paste operation."""
         if self.selection_rect and not self.selection_rect.isEmpty():
-            self.editor.setImage(self.original_image)
+            self.editor.setImage(self.original_image, keep_view=True)
         else:
             if self.movable_item and self.movable_item in self.editor.pasted_items:
                 self.editor.scene.removeItem(self.movable_item)
@@ -248,17 +250,19 @@ class PasteCommand(Command):
             for item in self.editor.pasted_items:
                 if item not in self.editor.scene.items():
                     self.editor.scene.addItem(item)
-            self.editor.setImage(self.original_image)
+            self.editor.setImage(self.original_image, keep_view=True)
             self.editor.scene.update()
         self.editor.is_modified = bool(self.editor.undo_stack)
         self.editor.window().statusBar().showMessage("Paste undone", 2000)
 
 class CutCommand(Command):
-    def __init__(self, editor):
+    def __init__(self, editor, fill_color=None):
         self.editor = editor
         self.original_image = editor.getCurrentImage().copy()
         self.selection_rect = editor.scene.selection_rect.rect().toRect() if editor.scene.selection_rect else QRect()
         self.cut_image = None
+        # Цвет заливки вырезанной области: настраиваемый, белый по умолчанию
+        self.fill_color = fill_color if fill_color is not None else Qt.white
 
     def execute(self):
         """Cut the selected area and copy it to the clipboard."""
@@ -269,9 +273,9 @@ class CutCommand(Command):
         QApplication.clipboard().setImage(self.cut_image)
         result_image = self.original_image.copy()
         painter = QPainter(result_image)
-        painter.fillRect(self.selection_rect, Qt.white)
+        painter.fillRect(self.selection_rect, self.fill_color)
         painter.end()
-        self.editor.setImage(result_image)
+        self.editor.setImage(result_image, keep_view=True)
         self.editor.scene.removeItem(self.editor.scene.selection_rect)
         self.editor.scene.selection_rect = None
         for handle in self.editor.scene.handles:
@@ -285,7 +289,7 @@ class CutCommand(Command):
 
     def undo(self):
         """Restore the original image after cutting."""
-        self.editor.setImage(self.original_image)
+        self.editor.setImage(self.original_image, keep_view=True)
         self.editor.is_modified = bool(self.editor.undo_stack)
         self.editor.window().statusBar().showMessage("Cut undone", 2000)
 

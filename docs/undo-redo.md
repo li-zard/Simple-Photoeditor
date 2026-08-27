@@ -65,7 +65,7 @@ All commands live in [`commands.py`](../commands.py) and derive from the [`Comma
 | [`AdjustmentsCommand`](../commands.py) | Image → Adjustments… (OK) | Autobalance + brightness/contrast/gamma pipeline | Pre-adjustment image |
 | [`TransformCommand`](../commands.py) | Rotate/Flip menu items, Rotation dialog (OK) | `QTransform` rotation (smooth) or `mirrored()` flip | Pre-transform image |
 | [`GrayscaleCommand`](../commands.py) | Image → Grayscale | OpenCV `RGBA2GRAY` → `GRAY2RGBA` | Color image |
-| [`CutCommand`](../commands.py) | Edit → Cut (Ctrl+X) | Copies selection to clipboard, fills it with white, clears selection UI | Original image (selection is not re-created) |
+| [`CutCommand`](../commands.py) | Edit → Cut (Ctrl+X) | Copies selection to clipboard, fills it with `fill_color` (white by default), clears selection UI | Original image (selection is not re-created) |
 | [`PasteCommand`](../commands.py) | Edit → Paste (Ctrl+V) | Into selection: paints clipboard image. No selection: adds a floating [`MovableImageItem`](../scene.py) | Selection case: original image. Floating case: removes the item and restores prior floating items + image |
 | [`ResizeCommand`](../commands.py) | Image → Resize… (OK) | *(applied by the editor before pushing)* | Swaps back `old_image`, restores scene rect, refits view |
 | [`FixPasteCommand`](../commands.py) | Clicking empty canvas / saving with floating items | *(applied by the editor)* | Restores old image and re-adds the floating items at their recorded positions |
@@ -115,10 +115,10 @@ class MyEffectCommand(Command):
 
     def execute(self):
         result = ...  # compute from self.original_image
-        self.editor.setImage(result)
+        self.editor.setImage(result, keep_view=True)  # keep zoom/scroll on edits
 
     def undo(self):
-        self.editor.setImage(self.original_image)
+        self.editor.setImage(self.original_image, keep_view=True)
 
     def redo(self):
         self.execute()

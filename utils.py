@@ -95,7 +95,7 @@ def add_recent_file(config, file_path):
 
     # Обновляем секцию RecentFiles
     config['RecentFiles'] = {f'file{i+1}': path for i, path in enumerate(recent_files)}
-    # Примечание: сохранение отложено до закрытия приложения (см. MainWindow.closeEvent)
+    # Примечание: вызывающая сторона (MainWindow.openFile) сохраняет конфиг сразу после вызова
 
 def get_recent_files(config):
     """Получить список недавних файлов."""

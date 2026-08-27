@@ -1,10 +1,10 @@
 from PyQt5.QtWidgets import (
     QWidget, QDialog, QVBoxLayout, QHBoxLayout, QGridLayout, QLabel,
-    QLineEdit, QPushButton, QSlider, QMdiSubWindow, QDialogButtonBox, QCheckBox, 
+    QLineEdit, QPushButton, QSlider, QMdiSubWindow, QDialogButtonBox, QCheckBox,
     QMessageBox, QSpinBox, QComboBox, QColorDialog
 )
 from PyQt5.QtGui import QPainter, QPen, QColor, QFont, QFontMetrics
-from PyQt5.QtCore import Qt, QSize, QRectF
+from PyQt5.QtCore import Qt, QSize, QRectF, QTimer
 from editor import ImageEditor, EditorContainer
 from commands import AdjustmentsCommand
 
@@ -106,7 +106,7 @@ class RulerWidget(QWidget):
                                 painter.drawLine(self.ruler_width - 5, minor_viewport_y, self.ruler_width, minor_viewport_y)
                 y += tick_spacing
 
-            # Draw cursor strip 
+            # Draw cursor strip
             if self.editor.cursor_pos.y() >= 0:
                 cursor_y = self.editor.cursor_pos.y()
                 if visible_scene_rect.top() <= cursor_y <= visible_scene_rect.bottom():
@@ -194,37 +194,37 @@ class NewImageDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("New Image")
         self.layout = QGridLayout(self)
-        
+
         # Width
         self.width_label = QLabel("Width:", self)
         self.width_edit = QLineEdit(width, self)
-        
+
         # Height
         self.height_label = QLabel("Height:", self)
         self.height_edit = QLineEdit(height, self)
-        
+
         # Units
         self.units_label = QLabel("Units:", self)
         self.units_combo = QComboBox(self)
         self.units_combo.addItems(["Pixels", "Centimeters", "Inches"])
         self.units_combo.setCurrentText(units)
-        
+
         # DPI
         self.dpi_label = QLabel("DPI:", self)
         self.dpi_edit = QLineEdit(str(dpi), self)
-        
+
         # Color Depth
         self.color_depth_label = QLabel("Color depth:", self)
         self.color_depth_combo = QComboBox(self)
         self.color_depth_combo.addItems(["24-bit color", "8-bit palette", "8-bit grayscale", "1-bit monochrome"])
-        
+
         # Background Color
         self.bg_color_button = QPushButton("Background color", self)
         self.bg_color_button.clicked.connect(self.choose_bg_color)
         self.bg_color_label = QLabel(self)
         self.bg_color = QColor(Qt.white)
         self.update_bg_color_label()
-        
+
         # Buttons
         self.buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
         self.buttons.accepted.connect(self.accept)
@@ -234,19 +234,19 @@ class NewImageDialog(QDialog):
         self.layout.addWidget(self.width_label, 0, 0)
         self.layout.addWidget(self.width_edit, 0, 1)
         self.layout.addWidget(self.units_combo, 0, 2)
-        
+
         self.layout.addWidget(self.height_label, 1, 0)
         self.layout.addWidget(self.height_edit, 1, 1)
-        
+
         self.layout.addWidget(self.dpi_label, 2, 0)
         self.layout.addWidget(self.dpi_edit, 2, 1)
-        
+
         self.layout.addWidget(self.color_depth_label, 3, 0)
         self.layout.addWidget(self.color_depth_combo, 3, 1, 1, 2)
-        
+
         self.layout.addWidget(self.bg_color_button, 4, 0)
         self.layout.addWidget(self.bg_color_label, 4, 1, 1, 2)
-        
+
         self.layout.addWidget(self.buttons, 5, 0, 1, 3)
 
     def choose_bg_color(self):
@@ -292,6 +292,12 @@ class AdjustmentsDialog(QDialog):
         self.setWindowTitle("Adjust Image")
         self.editor.start_preview()
         self.layout = QVBoxLayout(self)
+
+        # Debounce предпросмотра: пересчёт не чаще, чем раз в 80 мс после последнего изменения
+        self.preview_timer = QTimer(self)
+        self.preview_timer.setSingleShot(True)
+        self.preview_timer.setInterval(80)
+        self.preview_timer.timeout.connect(self._do_preview_adjustments)
 
         self.brightness_label = QLabel("Brightness: 0", self)
         self.brightness_slider = QSlider(Qt.Horizontal, self)
@@ -344,7 +350,11 @@ class AdjustmentsDialog(QDialog):
         self.gamma_label.setText(f"Gamma: {value / 100:.2f}")
 
     def previewAdjustments(self):
-        """Preview the adjustments on the image."""
+        """Preview the adjustments on the image (с дебаунсом 80 мс)."""
+        self.preview_timer.start()  # перезапуск: сработает через 80 мс после последнего изменения
+
+    def _do_preview_adjustments(self):
+        """Фактический пересчёт предпросмотра (вызывается по таймеру)."""
         brightness = self.brightness_slider.value() / 100.0
         contrast = self.contrast_slider.value() / 100.0
         gamma = self.gamma_slider.value() / 100.0
@@ -353,6 +363,7 @@ class AdjustmentsDialog(QDialog):
 
     def applyAdjustments(self):
         """Apply the adjustments and close the dialog."""
+        self.preview_timer.stop()  # отменяем отложенный предпросмотр
         brightness = self.brightness_slider.value() / 100.0
         contrast = self.contrast_slider.value() / 100.0
         gamma = self.gamma_slider.value() / 100.0
@@ -362,6 +373,7 @@ class AdjustmentsDialog(QDialog):
 
     def reject_dialog(self):
         """Cancel the preview and reject the dialog."""
+        self.preview_timer.stop()  # отменяем отложенный предпросмотр
         self.editor.cancel_preview()
         self.reject()
 
@@ -409,7 +421,7 @@ class ResizeDialog(QDialog):
     def updateAspectRatio(self, *args):
         """Update height or width based on aspect ratio."""
         if not self.aspect_ratio_checkbox.isChecked():
-            self.updatePercent()  # Update % if don't keep ratio 
+            self.updatePercent()  # Update % if don't keep ratio
             return
 
         try:
@@ -468,6 +480,12 @@ class RotationDialog(QDialog):
         self.setWindowTitle("Precise Rotation")
         self.editor.start_preview()
 
+        # Debounce предпросмотра поворота: пересчёт не чаще, чем раз в 80 мс
+        self.preview_timer = QTimer(self)
+        self.preview_timer.setSingleShot(True)
+        self.preview_timer.setInterval(80)
+        self.preview_timer.timeout.connect(self._do_live_preview_rotation)
+
         main_layout = QVBoxLayout(self)
 
         # Angle Display
@@ -504,11 +522,17 @@ class RotationDialog(QDialog):
         self.angle_spinbox.setValue(value)
 
     def live_preview_rotation(self, angle):
-        self.editor.preview_rotation(angle)
+        """Отложить пересчёт предпросмотра (с дебаунсом 80 мс)."""
+        self.preview_timer.start()  # перезапуск: сработает через 80 мс после последнего движения
+
+    def _do_live_preview_rotation(self):
+        """Фактический пересчёт предпросмотра поворота (вызывается по таймеру)."""
+        self.editor.preview_rotation(self.angle_spinbox.value())
 
     def get_angle(self):
         return self.angle_spinbox.value()
 
     def reject_dialog(self):
+        self.preview_timer.stop()  # отменяем отложенный предпросмотр
         self.editor.cancel_preview()
         self.reject()

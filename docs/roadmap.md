@@ -30,13 +30,13 @@
 
 Цель: устранить найденные при анализе поведенческие проблемы.
 
-- [ ] **Не сбрасывать zoom при правках.** Добавить параметр `setImage(image, keep_view=False)` в [`ImageEditor.setImage()`](../editor.py:68); команды вызывают с `keep_view=True` (не выполнять `zoom_factor = 1.0` и `fitInViewWithRulers()`).
-- [ ] **Настоящая гамма.** В [`AdjustmentsCommand.execute()`](../commands.py:116) и [`preview_adjustments()`](../editor.py:508) заменить `ImageEnhance.Brightness(gamma)` на степенную кривую через LUT NumPy: `((px / 255) ** (1 / gamma)) * 255`.
-- [ ] **Сохранять недавние файлы сразу.** После [`add_recent_file()`](../utils.py:71) в [`MainWindow.openFile()`](../main_window.py:559) вызвать [`save_config()`](../utils.py:60) — иначе краш теряет MRU-список.
-- [ ] **EXIF-ориентация.** В [`MainWindow.openFile()`](../main_window.py:504) читать EXIF через Pillow (`ImageOps.exif_transpose`) и предварительно поворачивать `QImage` — фото с телефонов больше не открываются боком.
-- [ ] **Качество JPEG при сохранении.** В [`saveImageToFile()`](../main_window.py:664) добавить параметр `quality` (для JPEG/WebP); опционально — спиннер качества в диалоге [`saveFileAs()`](../main_window.py:619).
-- [ ] **Debounce предпросмотра.** В [`AdjustmentsDialog.previewAdjustments()`](../widgets.py:346) и [`RotationDialog.live_preview_rotation()`](../widgets.py:506) откладывать пересчёт через `QTimer.singleShot(80, ...)`.
-- [ ] **Цвет заливки при Cut.** В [`CutCommand.execute()`](../commands.py:270) заменить жёсткий `Qt.white` на настраиваемый цвет (белый по умолчанию).
+- [x] **Не сбрасывать zoom при правках.** Добавлен параметр `setImage(image, keep_view=False)` в [`ImageEditor.setImage()`](../editor.py:58); все команды и `fixMovableItem()` вызывают с `keep_view=True` (zoom и позиция просмотра сохраняются при правках и undo/redo). *(выполнено)*
+- [x] **Настоящая гамма.** В [`AdjustmentsCommand.execute()`](../commands.py:118) и [`preview_adjustments()`](../editor.py:462) `ImageEnhance.Brightness(gamma)` заменён на степенную кривую через LUT NumPy: `((px / 255) ** (1 / gamma)) * 255` (одна кривая на все каналы, альфа не трогается). *(выполнено)*
+- [x] **Сохранять недавние файлы сразу.** После [`add_recent_file()`](../utils.py:75) в [`MainWindow.openFile()`](../main_window.py:537) вызывается [`save_config()`](../utils.py:64) — MRU-список переживает краш. *(выполнено)*
+- [x] **EXIF-ориентация.** [`MainWindow.openFile()`](../main_window.py:493) загружает через новый метод [`load_image_with_exif()`](../main_window.py:545) (`ImageOps.exif_transpose` + фолбэк на `QImage` при сбое) — фото с телефонов больше не открываются боком. *(выполнено)*
+- [x] **Качество JPEG при сохранении.** В [`saveImageToFile()`](../main_window.py:668) добавлен параметр `quality`; в [`saveFileAs()`](../main_window.py:598) для `.jpg/.jpeg/.webp` запрашивается качество (1–100, по умолчанию 90) через `QInputDialog.getInt`. *(выполнено)*
+- [x] **Debounce предпросмотра.** В [`AdjustmentsDialog`](../widgets.py:287) и [`RotationDialog`](../widgets.py:464) пересчёт откладывается через `QTimer` (singleShot, 80 мс); таймер останавливается при OK/Cancel. *(выполнено)*
+- [x] **Цвет заливки при Cut.** [`CutCommand`](../commands.py:256) принимает `fill_color` (по умолчанию белый); [`ImageEditor.cut()`](../editor.py:347) пробрасывает параметр. *(выполнено)*
 
 **Критерии приёмки:** поворот/яркость не сбрасывают масштаб; гамма 2.2 заметно отличается от яркости 2.2; MRU выживает после `kill -9`; телефонные фото открываются прямо.
 

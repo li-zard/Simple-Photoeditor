@@ -8,6 +8,7 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtGui import QIcon, QKeySequence, QColor, QImage, QPixmap, QPainter, QPen
 from PyQt5.QtCore import Qt, QRectF, QTimer
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
+from PIL import Image as PILImage, ImageOps
 from editor import ImageEditor, EditorContainer
 from widgets import CustomMdiSubWindow, NewImageDialog, AdjustmentsDialog, ResizeDialog, RotationDialog
 from commands import CropCommand
@@ -513,8 +514,8 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Error", f"File does not exist: {file_name}")
                 return
             logger.debug("Loading image: %s", file_name)
-            image = QImage(file_name)
-            if image.isNull():
+            image = self.load_image_with_exif(file_name)
+            if image is None or image.isNull():
                 logger.warning("Failed to load image (isNull): %s", file_name)
                 QMessageBox.warning(self, "Error", "Failed to open image.")
                 return
@@ -536,9 +537,33 @@ class MainWindow(QMainWindow):
 
             # Обновляем список недавних файлов в self.config
             add_recent_file(self.config, file_name)
+            # Сохраняем конфиг сразу — иначе краш приложения теряет MRU-список
+            save_config(self.config)
             self.update_recent_files_menu()
         else:
             logger.debug("No file selected, openFile aborted")
+
+    def load_image_with_exif(self, file_name):
+        """Загрузить QImage с учётом EXIF-ориентации (фото с телефонов не открываются боком).
+
+        Возвращает None, если файл не удалось открыть.
+        """
+        try:
+            with PILImage.open(file_name) as pil_img:
+                transposed = ImageOps.exif_transpose(pil_img)
+                if transposed is None:  # старые версии Pillow могли вернуть None
+                    transposed = pil_img.copy()
+                if transposed.mode != "RGBA":
+                    transposed = transposed.convert("RGBA")
+                data = transposed.tobytes("raw", "RGBA")
+                # У PIL Image width/height — свойства, а не методы
+                image = QImage(data, transposed.width, transposed.height,
+                               transposed.width * 4, QImage.Format_RGBA8888)
+                return image.copy()  # отсоединяемся от буфера Python
+        except Exception as e:
+            logger.warning("EXIF-aware load failed for %s (%s), falling back to QImage", file_name, e)
+            image = QImage(file_name)
+            return image if not image.isNull() else None
 
 
 
@@ -618,7 +643,18 @@ class MainWindow(QMainWindow):
                 file_path += ".png"  # Добавляем .png по умолчанию
                 logger.debug("Added .png extension: %s", file_path)
 
-            if self.saveImageToFile(editor, file_path):
+            # Для форматов с потерями спрашиваем качество (1–100)
+            quality = -1  # -1 — качество по умолчанию Qt
+            ext = os.path.splitext(file_path)[1].lower()
+            if ext in ('.jpg', '.jpeg', '.webp'):
+                quality, ok = QInputDialog.getInt(
+                    self, "Save Image", "Quality (1-100):", 90, 1, 100
+                )
+                if not ok:
+                    logger.debug("Quality dialog cancelled, save aborted: %s", file_path)
+                    return False
+
+            if self.saveImageToFile(editor, file_path, quality):
                 image_size = editor.getCurrentImage().size()
                 width = image_size.width()
                 height = image_size.height()
@@ -640,12 +676,12 @@ class MainWindow(QMainWindow):
             sub_window.editor_container.toggleRulers(not current_state)
 
 
-    def saveImageToFile(self, editor, file_path):
-        """Save the image to a file."""
+    def saveImageToFile(self, editor, file_path, quality=-1):
+        """Save the image to a file. quality — качество для JPEG/WebP (-1: значение Qt по умолчанию)."""
         image = editor.getCurrentImage()
         if image:
             try:
-                success = image.save(file_path)
+                success = image.save(file_path, None, quality)
                 if success:
                     return True
                 else:

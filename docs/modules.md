@@ -77,10 +77,10 @@ Sets title *"Simple Photo Editor"*, geometry 100,100,1000×800, creates the MDI 
 #### File operations
 
 - [`newFile()`](../main_window.py) — opens [`NewImageDialog`](../widgets.py) pre-filled with `last_image_settings`; on accept, maps the color-depth choice to a `QImage.Format` (`RGB32`, `Indexed8`, `Grayscale8`, `Mono`), sets DPI via `setDotsPerMeterX/Y(dpi * 39.37)`, fills the background (with special handling for palette and mono formats), creates a `CustomMdiSubWindow`, and fits the view.
-- [`openFile(file_name=None)`](../main_window.py) — if no path given, shows `QFileDialog`; validates existence and loadability; creates a sub-window, sets its title to `name (WxH) @ 100%`, moves it to the viewport's top-left, schedules `fitInViewWithRulers` after 100 ms, updates the MRU list.
+- [`openFile(file_name=None)`](../main_window.py) — if no path given, shows `QFileDialog`; validates existence and loadability; loads via [`load_image_with_exif()`](../main_window.py) (Pillow `ImageOps.exif_transpose`, so phone photos open correctly oriented; falls back to plain `QImage` on failure); creates a sub-window, sets its title to `name (WxH) @ 100%`, moves it to the viewport's top-left, schedules `fitInViewWithRulers` after 100 ms, updates the MRU list and persists the config immediately.
 - [`loadFile(file_path)`](../main_window.py) — alternative loader delegating to [`editor.openImage()`](../editor.py).
 - [`saveFile(sub_window=None)`](../main_window.py) — saves the active image; asks for a path (PNG default filter) when the sub-window has none; uses `QImage.save()`; clears `is_modified` and updates the title.
-- [`saveFileAs(sub_window=None)`](../main_window.py) — always asks for a path; first calls [`editor.applyAllPastedItems()`](../editor.py) so floating items are baked in; appends `.png` when no extension was given; delegates the actual write to [`saveImageToFile()`](../main_window.py).
+- [`saveFileAs(sub_window=None)`](../main_window.py) — always asks for a path; first calls [`editor.applyAllPastedItems()`](../editor.py) so floating items are baked in; appends `.png` when no extension was given; for `.jpg/.jpeg/.webp` asks for quality (1–100, default 90) via `QInputDialog`; delegates the actual write to [`saveImageToFile()`](../main_window.py).
 - [`printFile()`](../main_window.py) — `QPrintDialog`; paints the image scaled with `KeepAspectRatio` into the printer viewport.
 - [`scanImage()`](../main_window.py) — Windows-only WIA workflow: COM init → device selection → DPI prompt (`QInputDialog.getInt`, 75–1200 step 75) → set horizontal/vertical resolution properties (6147/6148) and color mode (6146) → `Transfer()` → load binary data into `QImage` → new sub-window titled `Scanned Image (N DPI)`. Guarded by `WIA_AVAILABLE`.
 
@@ -136,7 +136,7 @@ Antialiasing + smooth pixmap transform rendering, `ScrollHandDrag` mode, full vi
 
 #### Image lifecycle
 
-- [`setImage(image)`](../editor.py) — central setter: stores the image, refreshes `original_image`, lazily creates `image_item`, updates the pixmap and scene rect, resets zoom, clears `is_modified`, refits the view.
+- [`setImage(image, keep_view=False)`](../editor.py) — central setter: stores the image, refreshes `original_image`, lazily creates `image_item`, updates the pixmap and scene rect. With `keep_view=False` (new image) resets zoom, clears `is_modified` and refits the view; with `keep_view=True` (edits, undo/redo) the current zoom and scroll position are preserved.
 - [`loadImage(path)`](../editor.py) / [`openImage(file_name)`](../editor.py) — load from disk; `openImage` additionally clears both history stacks and the modified flag.
 - [`getCurrentImage()`](../editor.py) — accessor used by commands and dialogs.
 - [`getSelectedRegion()`](../editor.py) / [`setSelectedRegion(image)`](../editor.py) — read/replace the pixels under the selection rectangle.
@@ -161,14 +161,14 @@ Antialiasing + smooth pixmap transform rendering, `ScrollHandDrag` mode, full vi
 - [`flipImage(horizontal=True)`](../editor.py) — `TransformCommand` with `horizontal_flip`.
 - [`resizeImage(new_width, new_height, keep_aspect=True)`](../editor.py) — scales via `QImage.scaled` (`KeepAspectRatio` or `IgnoreAspectRatio`, smooth transform), updates scene rect, pushes a [`ResizeCommand`](../commands.py); caps the undo stack at 10 entries.
 - [`convertToGrayscale()`](../editor.py) — pushes a [`GrayscaleCommand`](../commands.py).
-- [`cut()`](../editor.py) — pushes a [`CutCommand`](../commands.py).
+- [`cut(fill_color=None)`](../editor.py) — pushes a [`CutCommand`](../commands.py) with an optional fill color (white by default).
 - [`paste()`](../editor.py) — reads the clipboard image, converts to `ARGB32`, pushes a [`PasteCommand`](../commands.py).
 
 #### Live-preview mechanism (used by dialogs)
 
 - [`start_preview()`](../editor.py) — snapshots `current_image` into `image_before_preview`.
 - [`preview_rotation(angle)`](../editor.py) — shows a rotated preview without touching history.
-- [`preview_adjustments(brightness, contrast, gamma, autobalance)`](../editor.py) — applies the same pipeline as [`AdjustmentsCommand.execute()`](../commands.py) (autobalance via per-channel histogram stretching with a 5% threshold, then PIL `ImageEnhance` brightness/contrast/gamma) directly to the display.
+- [`preview_adjustments(brightness, contrast, gamma, autobalance)`](../editor.py) — applies the same pipeline as [`AdjustmentsCommand.execute()`](../commands.py) (autobalance via per-channel histogram stretching with a 5% threshold, PIL `ImageEnhance` brightness/contrast, and a true power-curve gamma via a NumPy LUT `((px/255) ** (1/gamma)) * 255`) directly to the display.
 - [`apply_rotation(degrees)`](../editor.py) / [`apply_adjustments(...)`](../editor.py) — commit the dialog result as a real command based on the pre-preview snapshot, then clear it.
 - [`cancel_preview()`](../editor.py) — restores the snapshot.
 
@@ -259,11 +259,11 @@ Interface with no-op [`execute()`](../commands.py), [`undo()`](../commands.py); 
 | Class | Init captures | `execute()` | `undo()` / `redo()` |
 |-------|---------------|-------------|---------------------|
 | [`CropCommand(editor, rect)`](../commands.py) | Snapshot of the image | `QImage.copy(rect)` → [`setImage()`](../editor.py) + status message | Restore snapshot / re-execute |
-| [`AdjustmentsCommand(editor, brightness, contrast, gamma, autobalance, original_image_override)`](../commands.py) | Snapshot (or override) | Autobalance (NumPy per-channel histogram stretch, 5% clip threshold) → PIL brightness/contrast/gamma → `setImage()` | Restore snapshot / re-execute |
+| [`AdjustmentsCommand(editor, brightness, contrast, gamma, autobalance, original_image_override)`](../commands.py) | Snapshot (or override) | Autobalance (NumPy per-channel histogram stretch, 5% clip threshold) → PIL brightness/contrast → true gamma via NumPy LUT `((px/255) ** (1/gamma)) * 255` → `setImage(keep_view=True)` | Restore snapshot / re-execute |
 | [`TransformCommand(editor, degrees=None, horizontal_flip=None, original_image_override)`](../commands.py) | Snapshot (or override) | `QTransform().rotate(degrees)` with `SmoothTransformation`, or `mirrored(horizontal, not horizontal)` | Restore snapshot / re-execute |
 | [`GrayscaleCommand(editor)`](../commands.py) | Snapshot | Converts to `RGBA8888`, `cv2.cvtColor(RGBA2GRAY)` then back to RGBA; warns if cv2 missing | Restore snapshot / re-execute |
 | [`PasteCommand(editor, clipboard_image)`](../commands.py) | Snapshot, selection rect, prior pasted items | With selection: paints the clipboard image at the selection's top-left. Without: creates a [`MovableImageItem`](../scene.py) at (10, 10), fixes any currently selected floating items first, selects the new item | Selection case: restore snapshot. Floating case: remove item, restore prior items and snapshot |
-| [`CutCommand(editor)`](../commands.py) | Snapshot, selection rect | Copies the region to the clipboard, fills it with white, removes selection + handles | Restore snapshot |
+| [`CutCommand(editor, fill_color=None)`](../commands.py) | Snapshot, selection rect | Copies the region to the clipboard, fills it with `fill_color` (white by default), removes selection + handles | Restore snapshot |
 | [`ResizeCommand(editor, old_image, new_image)`](../commands.py) | Both images | — (applied by the editor) | `undo()`/`redo()` swap `current_image`, pixmap, scene rect, and refit the view |
 | [`FixPasteCommand(editor, old_image, new_image, pasted_items)`](../commands.py) | Images, items, positions | — (applied by the editor) | `undo()` restores the old image and re-adds the floating items at their positions; `redo()` bakes the new image and removes the items |
 
@@ -309,7 +309,7 @@ Fields: width, height, units combo (Pixels / Centimeters / Inches), DPI, color d
 Live-preview adjustments dialog:
 
 - Sliders: brightness −100…100, contrast −100…100, gamma 1…500 (displayed /100); checkable **Autobalance** button.
-- Every change calls [`previewAdjustments()`](../widgets.py) → [`editor.preview_adjustments()`](../editor.py) (the editor snapshots first via [`start_preview()`](../editor.py) in the dialog constructor).
+- Every change calls [`previewAdjustments()`](../widgets.py), which debounces the recomputation through a single-shot `QTimer` (80 ms) before calling [`editor.preview_adjustments()`](../editor.py) (the editor snapshots first via [`start_preview()`](../editor.py) in the dialog constructor).
 - OK → [`applyAdjustments()`](../widgets.py) → [`editor.apply_adjustments()`](../editor.py) (commits an [`AdjustmentsCommand`](../commands.py)).
 - Cancel → [`reject_dialog()`](../widgets.py) → [`editor.cancel_preview()`](../editor.py).
 
@@ -327,7 +327,7 @@ Fields: width, height, percent (default 100), and a *Keep Aspect Ratio* checkbox
 Precise rotation with live preview:
 
 - `QSpinBox` (−180…180) and a horizontal slider kept in sync ([`update_slider_from_spinbox()`](../widgets.py) / [`update_spinbox_from_slider()`](../widgets.py)).
-- `sliderMoved` → [`live_preview_rotation()`](../widgets.py) → [`editor.preview_rotation()`](../editor.py).
+- `sliderMoved` → [`live_preview_rotation()`](../widgets.py) → debounced through a single-shot `QTimer` (80 ms) → [`editor.preview_rotation()`](../editor.py).
 - OK → caller reads [`get_angle()`](../widgets.py) and calls [`editor.apply_rotation()`](../editor.py); Cancel → [`reject_dialog()`](../widgets.py) restores the snapshot.
 
 ---
@@ -346,7 +346,7 @@ Precise rotation with live preview:
 
 ### Recent files (MRU)
 
-- [`add_recent_file(config, file_path)`](../utils.py) — ignores missing paths; moves duplicates to the front; caps the list at 5; rewrites the `RecentFiles` section as `file1…file5`. Does **not** save immediately (persistence happens on close).
+- [`add_recent_file(config, file_path)`](../utils.py) — ignores missing paths; moves duplicates to the front; caps the list at 5; rewrites the `RecentFiles` section as `file1…file5`. The caller ([`MainWindow.openFile()`](../main_window.py)) persists the config immediately after the call.
 - [`get_recent_files(config)`](../utils.py) — returns up to 5 entries, filtered to files that still exist.
 
 See [Configuration](configuration.md) for the full INI schema.

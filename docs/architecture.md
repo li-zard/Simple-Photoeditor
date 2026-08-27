@@ -79,7 +79,7 @@ Key points:
 
 - [`ImageEditor`](../editor.py) (a `QGraphicsView`) is the per-image editing surface:
   - Holds `current_image` / `original_image` (`QImage`), the `image_item` (`QGraphicsPixmapItem`), zoom factor, modification flag, and the undo/redo stacks.
-  - [`setImage()`](../editor.py) is the single entry point for putting a `QImage` on screen (resets zoom, refits view, clears the modified flag).
+  - [`setImage(image, keep_view=False)`](../editor.py) is the single entry point for putting a `QImage` on screen. New images (`keep_view=False`) reset zoom, refit the view and clear the modified flag; edits and undo/redo (`keep_view=True`) preserve the current zoom and scroll position.
   - Zoom/navigation: [`zoomIn()`](../editor.py), [`zoomOut()`](../editor.py), [`actualSize()`](../editor.py), [`fitInViewWithRulers()`](../editor.py).
   - Command execution: [`executeCommand()`](../editor.py) runs a command and pushes it onto the undo stack.
   - Live-preview mechanism for dialogs: [`start_preview()`](../editor.py) / [`preview_rotation()`](../editor.py) / [`preview_adjustments()`](../editor.py) / [`cancel_preview()`](../editor.py) / [`apply_rotation()`](../editor.py) / [`apply_adjustments()`](../editor.py).
@@ -106,7 +106,7 @@ All destructive operations are encapsulated as command objects (see [Undo/Redo S
 | [`TransformCommand`](../commands.py) | Rotation (arbitrary angle) and mirroring |
 | [`GrayscaleCommand`](../commands.py) | RGBA → grayscale via OpenCV |
 | [`PasteCommand`](../commands.py) | Paste clipboard image (into selection or as movable item) |
-| [`CutCommand`](../commands.py) | Cut selection to clipboard (fills with white) |
+| [`CutCommand`](../commands.py) | Cut selection to clipboard (fills with a configurable color, white by default) |
 | [`ResizeCommand`](../commands.py) | Image rescaling |
 | [`FixPasteCommand`](../commands.py) | Bake floating pasted items into the base image |
 
@@ -153,6 +153,7 @@ MainWindow.openFile(file_name?)            main_window.py
    ├─ mdi_area.addSubWindow(sub_window); sub_window.show()
    ├─ QTimer.singleShot(100, editor.fitInViewWithRulers)   # fit after layout
    ├─ add_recent_file(config, file_name)                   # utils.py
+   ├─ save_config(config)                                  # persist MRU immediately
    └─ update_recent_files_menu()
 ```
 
@@ -246,3 +247,5 @@ MainWindow.closeEvent()                    main_window.py
 - Logging is configured in [`main.py`](../main.py) via the `PHOTOEDITOR_LOGLEVEL` environment variable (default `WARNING`); loggers are named `photoeditor.<module>`.
 
 > Historical quirks (dead code in `editor.py`, duplicated action definitions, duplicated `resource_path()`, debug `print()` statements) were resolved during Roadmap stage 1.
+
+> Behavioral quirks (zoom reset on edits, fake gamma via `ImageEnhance.Brightness`, MRU lost on crash, missing EXIF orientation, no JPEG quality control, unthrottled live preview, hardcoded Cut fill color) were resolved during Roadmap stage 2.

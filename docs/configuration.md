@@ -41,7 +41,10 @@ Writes the parser to the user config path. I/O errors are caught and printed; th
 
 ### When settings are written
 
-The in-memory `config` object is mutated during the session (e.g. MRU updates in [`add_recent_file()`](../utils.py)) but persisted **only once**, in [`MainWindow.closeEvent()`](../main_window.py), which first updates:
+The in-memory `config` object is persisted at two points:
+
+- **Immediately** after every MRU update: [`MainWindow.openFile()`](../main_window.py) calls [`save_config()`](../utils.py) right after [`add_recent_file()`](../utils.py), so the recent-files list survives a crash.
+- **On close**, in [`MainWindow.closeEvent()`](../main_window.py), which first updates:
 
 - `General.window_width` / `General.window_height` — current window size
 - `LastImageSettings.*` — last New Image dialog values

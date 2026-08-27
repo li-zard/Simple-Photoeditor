@@ -55,8 +55,12 @@ class ImageEditor(QGraphicsView):
         """Handle paint events."""
         super().paintEvent(event)
 
-    def setImage(self, image):
-        """Set the current image in the editor."""
+    def setImage(self, image, keep_view=False):
+        """Set the current image in the editor.
+
+        keep_view=True — правка изображения: сохранить текущий масштаб
+        и позицию просмотра (не сбрасывать zoom и не вызывать fitInViewWithRulers).
+        """
         if not image:
             return
         self.current_image = image
@@ -68,9 +72,13 @@ class ImageEditor(QGraphicsView):
         self.image_item.setPixmap(QPixmap.fromImage(self.current_image))
         self.scene.setSceneRect(0, 0, image.width(), image.height())
         self.image_item.setPos(0, 0)  # Always set to (0, 0)
-        self.zoom_factor = 1.0
-        self.is_modified = False
-        self.fitInViewWithRulers()
+        if keep_view:
+            # Правка: не трогаем zoom_factor/трансформацию, только обновляем заголовок
+            self.updateWindowTitle()
+        else:
+            self.zoom_factor = 1.0
+            self.is_modified = False
+            self.fitInViewWithRulers()
         self.scene.update()
         self.viewport().update()
 
@@ -272,7 +280,7 @@ class ImageEditor(QGraphicsView):
             painter.setRenderHint(QPainter.SmoothPixmapTransform)
             painter.drawImage(selection.topLeft(), image)
             painter.end()
-            self.setImage(self.current_image)
+            self.setImage(self.current_image, keep_view=True)
             return True
         return False
 
@@ -344,13 +352,13 @@ class ImageEditor(QGraphicsView):
             self.pasted_items.remove(item)
         self.scene.update()
 
-    def cut(self):
-        """Cut the selected area to the clipboard."""
+    def cut(self, fill_color=None):
+        """Cut the selected area to the clipboard. fill_color — цвет заливки (по умолчанию белый)."""
         if not self.current_image:
             self.window().statusBar().showMessage("No image to cut", 2000)
             return
         from commands import CutCommand
-        command = CutCommand(self)
+        command = CutCommand(self, fill_color)
         self.executeCommand(command)
 
     def paste(self):
@@ -457,8 +465,10 @@ class ImageEditor(QGraphicsView):
                 enhancer = ImageEnhance.Contrast(pil_img)
                 pil_img = enhancer.enhance(1.0 + contrast)
             if gamma != 1.0:
-                enhancer = ImageEnhance.Brightness(pil_img)
-                pil_img = enhancer.enhance(gamma)
+                # Настоящая гамма: степенная кривая ((px / 255) ** (1 / gamma)) * 255 через LUT
+                inv_gamma = 1.0 / gamma
+                lut = ((np.arange(256, dtype=np.float32) / 255.0) ** inv_gamma * 255.0 + 0.5).astype(np.uint8)
+                pil_img = pil_img.point(lut.tolist() * 4)  # RGBA: одна кривая на все каналы (альфа 255 → 255)
 
             preview_image = QImage(pil_img.tobytes(), image.width(), image.height(), image.bytesPerLine(), QImage.Format_RGB32)
             self.current_image = preview_image
