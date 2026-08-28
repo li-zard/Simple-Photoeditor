@@ -28,11 +28,13 @@ To run the application from the source code, follow these steps:
 
 ### Building the Executable
 
-The project uses PyInstaller to package the application into a standalone executable.
+The project uses PyInstaller (`--onedir`) to package the application; on Windows an Inno Setup installer is built on top of the bundle.
 
 ```bash
-pyinstaller main.py --onefile --windowed --icon=icons/icon.ico --name="SimplePhotoEditor_v1.0"
+pyinstaller main.py --onedir --windowed --icon=icons/icon.ico --name="SimplePhotoEditor" --add-data "icons;icons" --add-data "config.ini;."
 ```
+
+On Windows, run [`build_windows.bat`](build_windows.bat): it calls PyInstaller and then Inno Setup (`ISCC.exe`) to produce `installer\Output\SimplePhotoEditor_Setup_v1.0.exe` (script: [`installer/installer.iss`](installer/installer.iss)).
 
 ## Development Conventions
 
@@ -43,6 +45,9 @@ pyinstaller main.py --onefile --windowed --icon=icons/icon.ico --name="SimplePho
     *   `scene.py`: Implements the `ImageEditorScene`, a `QGraphicsScene` that handles interactive elements like selection rectangles and handles.
     *   `widgets.py`: Contains custom UI widgets used in the application, such as dialogs.
     *   `commands.py`: Implements the command pattern for undo/redo functionality.
+    *   [`imageops.py`](imageops.py): Shared image-processing pipeline (brightness/contrast/gamma/autobalance).
+    *   [`theme.py`](theme.py): Light/dark application themes.
+    *   [`singleinstance.py`](singleinstance.py): Single-instance guard (QLocalSocket/QLocalServer); forwards opened file paths to the running instance.
     *   `utils.py`: Provides utility functions for tasks like loading and saving configuration.
 
 *   **Undo/Redo:** The application uses the Command design pattern to implement undo and redo functionality. Each image modification is encapsulated in a command object that can be executed and un-executed.

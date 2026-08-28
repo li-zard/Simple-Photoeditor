@@ -17,12 +17,12 @@ This documentation provides a full description of the project: its architecture,
 
 ## Project Snapshot
 
-- **Language**: Python 3 (PyQt5 GUI toolkit)
+- **Language**: Python 3.10–3.13 (PyQt5 GUI toolkit)
 - **Image processing**: Pillow (PIL), OpenCV (optional, for grayscale), NumPy
 - **UI paradigm**: Multi-Document Interface (MDI) — each open image lives in its own child window
 - **Editing model**: Command pattern with a two-stack undo/redo history
 - **Configuration**: INI-based settings stored per-user via `appdirs`
-- **Packaging**: PyInstaller (`--onefile --windowed`)
+- **Packaging**: PyInstaller (`--onedir --windowed`) + Inno Setup installer (Windows)
 
 ## Source Files at a Glance
 
@@ -35,13 +35,15 @@ This documentation provides a full description of the project: its architecture,
 | [`widgets.py`](../widgets.py) | `RulerWidget`, `CustomMdiSubWindow`, and all dialogs (New Image, Adjustments, Resize, Rotation) |
 | [`commands.py`](../commands.py) | Command pattern: `Command` base class and all concrete edit operations |
 | [`utils.py`](../utils.py) | Config load/save, resource paths, recent-files management |
+| [`theme.py`](../theme.py) | Light/dark themes, palette, theme-aware icon inversion |
+| [`singleinstance.py`](../singleinstance.py) | Single-instance guard: forwards opened files to the running instance |
 
 ## Quick Start
 
 ```bash
-# 1. Create and activate a virtual environment
-python -m venv venv
-source venv/bin/activate        # Windows: venv\Scripts\activate
+# 1. Create and activate a virtual environment (Python 3.10–3.13)
+python3.12 -m venv venv
+source venv/bin/activate        # Windows: py -3.12 -m venv venv && venv\Scripts\activate
 
 # 2. Install dependencies
 pip install -r requirements.txt

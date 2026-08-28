@@ -14,23 +14,41 @@ Simple Photoeditor is an open-source Python-based multi platform image editing t
 - **Scanning and Printing**: Scan documents directly into the editor and print images with ease.
 - **Minimalistic Design**: Streamlined interface for quick and efficient workflows.
 
+## Requirements
+
+- **Python 3.10 – 3.13** (3.12 recommended). Python 3.14 is not supported yet — the pinned `numpy`/`pillow` wheels are not published for it.
+- Linux, Windows or macOS.
+
 ## Installation
 
 1. **Clone the Repository**:
    ```bash
-   git clone https://github.com/yourusername/simple-photoeditor.git
-   cd simple-photoeditor
+   git clone https://github.com/li-zard/Simple-Photoeditor.git
+   cd Simple-Photoeditor
    ```
 
-2. **Set Up a Virtual Environment** (recommended):
+2. **Set Up a Virtual Environment**:
+
+   Linux / macOS:
    ```bash
-   python -m venv venv
-   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   python3.12 -m venv venv
+   source venv/bin/activate
+   ```
+
+   Windows:
+   ```bat
+   py -3.12 -m venv venv
+   venv\Scripts\activate
    ```
 
 3. **Install Dependencies**:
    ```bash
    pip install -r requirements.txt
+   ```
+
+4. **Run**:
+   ```bash
+   python main.py
    ```
 
 ## Key Dependencies
@@ -46,8 +64,13 @@ For a full list of dependencies, see `requirements.txt`.
 
 ## Download
 
-Last Relese [v1.0] (https://github.com/li-zard/Simple-Photoeditor/releases/tag/%23)
-    - Windows: (https://github.com/li-zard/Simple-Photoeditor/releases/download/%23/SimplePhotoEditor_v1.0.exe)
+Prebuilt binaries are available on the [Releases page](https://github.com/li-zard/Simple-Photoeditor/releases):
+
+- **Windows installer** — `SimplePhotoEditor_Setup_v1.0.exe`: Start-menu shortcut, optional desktop icon, optional "Open with" integration for PNG/JPEG/BMP/GIF/TIFF/GIF (per-user, no admin rights required).
+- **Windows portable** — a zip of the `SimplePhotoEditor` folder: unpack anywhere and run `SimplePhotoEditor.exe`, no installation and no traces (settings are stored in the user profile).
+
+> Note on Windows 11 Smart App Control: unsigned builds may be blocked on machines with SAC enabled. See [docs/building.md](docs/building.md) for details.
+
 ## Usage
 
 1. Run the application:
@@ -55,11 +78,38 @@ Last Relese [v1.0] (https://github.com/li-zard/Simple-Photoeditor/releases/tag/%
    python main.py
    ```
 
+   Optionally open a file directly (a running instance receives it in the same window):
+   ```bash
+   python main.py photo.png
+   ```
+
 2. Use the interface to:
    - Open or scan images.
-   - Perform edits (resize, crop, rotate, etc.).
-   - Combine multiple images on a canvas.
+   - Perform edits (resize, crop, rotate, adjustments, …).
+   - Combine multiple images on a canvas (MDI).
    - Save or print your work.
+
+## Building from Source
+
+Full details in [docs/building.md](docs/building.md). Short version:
+
+**Linux** (after `source venv/bin/activate` and `pip install -r requirements-dev.txt`):
+
+```bash
+python -m PyInstaller main.py --onedir --windowed --icon=icons/icon.ico \
+    --name="SimplePhotoEditor" \
+    --add-data "icons:icons" --add-data "config.ini:."
+```
+
+> Arch Linux / system-Qt users: if the app aborts with `Cannot mix incompatible Qt library`, see the Troubleshooting section of [docs/building.md](docs/building.md).
+
+**Windows** (after `venv\Scripts\activate` and `pip install -r requirements-dev.txt`):
+
+```bat
+build_windows.bat
+```
+
+The script runs PyInstaller (onedir) and then Inno Setup (`ISCC.exe`, [Inno Setup 6+](https://jrsoftware.org/isinfo.php) required) to produce `installer\Output\SimplePhotoEditor_Setup_v1.0.exe`. The `dist\SimplePhotoEditor\` folder itself is a portable build — zip it to distribute without installation.
 
 ## Contributing
 

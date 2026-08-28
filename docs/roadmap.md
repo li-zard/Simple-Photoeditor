@@ -96,7 +96,7 @@
 
 ---
 
-## Этап 6. Упаковка и инсталлятор Inno Setup — 🟡
+## Этап 6. Упаковка и инсталлятор Inno Setup — 🟢 (6.5 — ручные проверки на Windows)
 
 Цель: `SimplePhotoEditor_Setup_v1.0.exe` с ассоциациями графических файлов.
 
@@ -112,19 +112,23 @@ pyinstaller main.py --onedir --windowed --icon=icons/icon.ico \
 
 > На Windows разделитель в `--add-data` — точка с запятой: `--add-data "icons;icons"`.
 
+✅ Сделано и проверено на Linux: `dist/SimplePhotoEditor/` содержит `_internal/icons/` и `_internal/config.ini`, замороженное приложение запускается и находит ресурсы.
+
 ### 6.2. Проверить ресурсы в замороженном приложении
 
-- [ ] Иконки находят­ся через [`resource_path()`](../main_window.py:933) → `sys._MEIPASS` (после этапа 1 останется одна реализация — [`utils.resource_path()`](../utils.py:14)).
-- [ ] Дефолтный `config.ini` подхватывается при первом запуске ([`load_config()`](../utils.py:22)).
-- [ ] При проблемах добавить `--hidden-import cv2` (grayscale) и `--hidden-import win32com --hidden-import pythoncom` (сканирование, только Windows).
+- [x] Иконки находят­ся через [`resource_path()`](../utils.py:18) → `sys._MEIPASS` (после этапа 1 останется одна реализация — [`utils.resource_path()`](../utils.py:18)).
+- [x] Дефолтный `config.ini` подхватывается при первом запуске ([`load_config()`](../utils.py:26)).
+- [x] При проблемах добавить `--hidden-import cv2` (grayscale) и `--hidden-import win32com --hidden-import pythoncom` (сканирование, только Windows) — не потребовались: `cv2` определяется автоматически.
 
 ### 6.3. Создать `installer.iss`
 
-- [ ] Положить в корень проекта `installer/installer.iss` (скрипт ниже).
-- [ ] Ярлыки: меню «Пуск» + опционально рабочий стол.
-- [ ] Задача `fileassoc` — ассоциации файлов.
-- [ ] Регистрация через `HKCU` + `OpenWithProgids` — ненавязчивый способ: приложение появляется в меню Проводника «Открыть с помощью → Выбрать другое приложение», пользователь сам решает, назначать ли его по умолчанию. Прямая запись в `HKCR` требует повышения прав и считается некорректной практикой.
-- [ ] `uninsdeletekey`/`uninsdeletevalue` — полная очистка при деинсталляции.
+- [x] Скрипт создан: [`installer/installer.iss`](../installer/installer.iss) (шаблон ниже).
+- [x] Ярлыки: меню «Пуск» + опционально рабочий стол.
+- [x] Задача `fileassoc` — ассоциации файлов.
+- [x] Регистрация через `HKCU` + `OpenWithProgids` — ненавязчивый способ: приложение появляется в меню Проводника «Открыть с помощью → Выбрать другое приложение», пользователь сам решает, назначать ли его по умолчанию. Прямая запись в `HKCR` требует повышения прав и считается некорректной практикой.
+- [x] `uninsdeletekey`/`uninsdeletevalue` — полная очистка при деинсталляции.
+
+Готовый скрипт дополняет шаблон: языки интерфейса (english/russian), `PrivilegesRequired=lowest` (всё в HKCU — без UAC), деинсталлятор в меню «Пуск», `{autodesktop}` вместо `{commondesktop}`, `OutputDir=Output`; записи ассоциаций развёрнуты явно, без `#sub`/`#for` (ISCC 6.7.3 отверг идиому: «Undeclared identifier: Ext»).
 
 ```ini
 [Setup]
@@ -166,8 +170,8 @@ Root: HKCU; Subkey: "Software\Classes\{#Ext}\OpenWithProgids"; ValueType: string
 
 ### 6.4. Сборочная цепочка
 
-- [ ] Установить [Inno Setup](https://jrsoftware.org/isinfo.php) (бесплатен); компилятор — `ISCC.exe`.
-- [ ] Скрипт сборки `build_windows.bat` (или задача в `Makefile`):
+- [ ] Установить [Inno Setup](https://jrsoftware.org/isinfo.php) (бесплатен); компилятор — `ISCC.exe` *(шаг для Windows-машины)*.
+- [x] Скрипт сборки готов: [`build_windows.bat`](../build_windows.bat) — находит `ISCC.exe` (путь переопределяется переменной `ISCC`), запускает PyInstaller и компиляцию инсталлятора, с проверкой `errorlevel` на каждом шаге:
 
 ```bat
 pyinstaller main.py --onedir --windowed --icon=icons\icon.ico ^
@@ -176,9 +180,9 @@ pyinstaller main.py --onedir --windowed --icon=icons\icon.ico ^
 ISCC installer\installer.iss
 ```
 
-- [ ] Артефакт: `installer\Output\SimplePhotoEditor_Setup_v1.0.exe` (путь задаёт `OutputDir`, по умолчанию `Output\` рядом с `.iss`).
+- [x] Артефакт: `installer\Output\SimplePhotoEditor_Setup_v1.0.exe` (путь задаёт `OutputDir=Output` в [`installer.iss`](../installer/installer.iss)).
 
-### 6.5. Приёмочные проверки
+### 6.5. Приёмочные проверки (ручные, на Windows-машине)
 
 - [ ] Установка → ярлык → запуск → открытие PNG/JPEG/BMP.
 - [ ] В Проводнике: «Открыть с помощью» содержит Simple Photo Editor; после выбора — файл открывается в уже запущенном экземпляре (требуется 5.2).
@@ -197,7 +201,7 @@ ISCC installer\installer.iss
 | 3 | Архитектура | 🟡 | желательно после 1 |
 | 4 | Тесты | 🟢 | желательно после 3 |
 | 5 | Функции (zoom, single-instance, …) | 🟢 | 5.2 до этапа 6 |
-| 6 | Inno Setup + ассоциации | 🟡 | 5.2 (одноэкземплярность) |
+| 6 | Inno Setup + ассоциации | 🟢 | 5.2 (одноэкземплярность) |
 
 ## Как работает ассоциация (напоминание)
 

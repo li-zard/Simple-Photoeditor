@@ -23,6 +23,10 @@ logger = logging.getLogger("photoeditor.theme")
 # Текущее имя темы: 'light' | 'dark' (системная сводится к одной из них)
 _current_theme = "light"
 
+# Имя системного стиля, захваченное до первого переключения на Fusion
+# (нужно, чтобы вернуть родной стиль при возврате на светлую тему).
+_default_style = None
+
 # Кэш иконок: (icon_name, theme) -> QIcon
 _icon_cache = {}
 
@@ -147,9 +151,20 @@ def apply_theme(app, name):
 
     _current_theme = "dark" if name == "dark" else "light"
 
+    global _default_style
     if is_dark():
+        # Нативные стили (например, windowsvista в Windows) игнорируют тёмную
+        # палитру при отрисовке полосы меню и выпадающих меню: полоса
+        # остаётся светлой, а текст рисуется белым — пункты видны только
+        # при наведении. Fusion рисует строго по палитре, поэтому тёмная
+        # тема всегда переключает приложение на Fusion.
+        if _default_style is None:
+            _default_style = app.style().objectName()
+        app.setStyle("Fusion")
         app.setPalette(_dark_palette())
     else:
+        if _default_style:
+            app.setStyle(_default_style)
         app.setPalette(app.style().standardPalette())
 
     _refresh_all_icons(app)
