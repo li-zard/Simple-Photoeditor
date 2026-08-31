@@ -8,3 +8,6 @@ PyQt5==5.15.11
 PyQt5-Qt5==5.15.16; platform_system == "Linux"
 PyQt5-Qt5==5.15.2; platform_system != "Linux"
 PyQt5_sip==12.17.0
+# Windows-only: WIA scanning (win32com/pythoncom). Optional at runtime,
+# but installed by default so the Scan action works out of the box.
+pywin32==308; platform_system == "Windows"

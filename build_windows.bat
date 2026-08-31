@@ -51,6 +51,7 @@ rem --- 1. Freeze the application (onedir) ---
 echo === PyInstaller (onedir) ===
 "%PY%" -m PyInstaller main.py --onedir --windowed --icon=icons\icon.ico ^
     --name="SimplePhotoEditor" --noconfirm ^
+    --hidden-import win32com --hidden-import pythoncom ^
     --add-data "icons;icons" --add-data "config.ini;."
 if errorlevel 1 (
     echo [ERROR] PyInstaller failed.

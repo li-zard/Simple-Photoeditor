@@ -1,4 +1,5 @@
 import os
+import sys
 import logging
 
 from PyQt5.QtWidgets import (
@@ -795,7 +796,19 @@ class MainWindow(QMainWindow):
     def scanImage(self):
         """Scan an image using WIA with DPI selection"""
         if not WIA_AVAILABLE:
-            QMessageBox.warning(self, "Scanning Not Available", "WIA components are not installed. Scanning is not available.")
+            if sys.platform.startswith("win"):
+                QMessageBox.warning(
+                    self, "Scanning Not Available",
+                    "WIA components are not installed.\n\n"
+                    "Scanning requires the 'pywin32' package (win32com/pythoncom).\n"
+                    "Install it with:  pip install pywin32\n\n"
+                    "If you are using the installed .exe version, reinstall it\n"
+                    "with a build that includes WIA support.")
+            else:
+                QMessageBox.warning(
+                    self, "Scanning Not Available",
+                    "WIA components are not installed.\n\n"
+                    "Scanning is only available on Windows (via WIA).")
             return
 
         from win32com.client import Dispatch
