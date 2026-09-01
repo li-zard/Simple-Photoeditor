@@ -167,13 +167,17 @@ class ImageEditorScene(QGraphicsScene):
         self.update()
 
     def clearItemHandles(self):
-        """Убрать якоря ресайза вставленного элемента."""
+        """Убрать якоря ресайза вставленного элемента.
+
+        Важно: не сбрасываем item_resize_handle — этот метод вызывается
+        из createItemHandles() при каждом движении во время ресайза
+        (updateItemResize), и сброс прервал бы перетаскивание.
+        """
         for handle in self.item_handles:
             if handle.scene():
                 self.removeItem(handle)
         self.item_handles = []
         self.handles_item = None
-        self.item_resize_handle = None
 
     def updateItemHandles(self):
         """Перестроить якоря под текущее положение/размер элемента."""
@@ -277,10 +281,15 @@ class ImageEditorScene(QGraphicsScene):
             item = self.itemAt(event.scenePos(), QTransform())
             if item in self.handles:
                 self.active_handle = item
+                # QGraphicsView заранее сбрасывает accept у события;
+                # без явного accept при ScrollHandDrag view начнёт
+                # рукопрокрутку вместо передачи событий сцене.
+                event.accept()
                 return
             if item in self.item_handles:
                 self.item_resize_handle = item.data(0)
                 self.beginItemResize(event.scenePos())
+                event.accept()
                 return
 
             editor = self.views()[0]
@@ -294,10 +303,12 @@ class ImageEditorScene(QGraphicsScene):
                     and self.selection_rect.rect().contains(event.scenePos())):
                 self.moving_selection = True
                 self.move_offset = event.scenePos() - self.selection_rect.rect().topLeft()
+                event.accept()
                 return
 
             if not isinstance(item, MovableImageItem):
                 self.clearItemHandles()
+                self.item_resize_handle = None
                 for selected_item in self.selectedItems():
                     if isinstance(selected_item, MovableImageItem):
                         self.fixMovableItem(selected_item, editor)
@@ -325,6 +336,7 @@ class ImageEditorScene(QGraphicsScene):
         if self.item_resize_handle:
             self.updateItemResize(event.scenePos(),
                                   event.modifiers() & Qt.ShiftModifier)
+            event.accept()
             return
         if self.active_handle:
             new_pos = event.scenePos()
@@ -382,6 +394,7 @@ class ImageEditorScene(QGraphicsScene):
         """Handle mouse release events to finalize selections."""
         if self.item_resize_handle:
             self.item_resize_handle = None
+            event.accept()
             return
         if self.selecting and self.current_tool == "selection":
             self.selecting = False

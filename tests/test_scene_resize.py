@@ -9,8 +9,8 @@ Covers:
 """
 import pytest
 from PyQt5.QtWidgets import QApplication, QMainWindow
-from PyQt5.QtGui import QImage, QColor, QPixmap, QTransform
-from PyQt5.QtCore import QRectF, QPointF, QSizeF, Qt
+from PyQt5.QtGui import QImage, QColor, QPixmap, QTransform, QMouseEvent
+from PyQt5.QtCore import QRectF, QPointF, QSizeF, Qt, QPoint, QEvent
 
 from editor import ImageEditor
 from scene import MovableImageItem
@@ -168,6 +168,54 @@ class TestBakeScaledItem:
         # pixel inside both canvas and item area is red
         assert editor.current_image.pixelColor(370, 260) == QColor(255, 0, 0)
         assert editor.pasted_items == []
+
+
+class TestHandleDragViaRealEvents:
+    """Регрессионный тест: перетаскивание за якорь реальными событиями
+    мыши через viewport (dragMode по умолчанию = ScrollHandDrag).
+
+    Раньше mousePressEvent сцены не вызывал event.accept() при нажатии
+    на якорь → view считал событие необработанным и запускал
+    рукопрокрутку вместо ресайза.
+    """
+
+    def _send(self, editor, etype, widget_pos, button, buttons):
+        vp = editor.viewport()
+        ev = QMouseEvent(etype, QPointF(widget_pos),
+                         editor.mapToGlobal(QPoint(widget_pos.x(), widget_pos.y())),
+                         button, buttons, Qt.NoModifier)
+        QApplication.sendEvent(vp, ev)
+
+    def test_handle_drag_resizes_not_pans(self, editor, clipboard_image):
+        cmd = _paste_floating(editor, clipboard_image)
+        item = cmd.movable_item
+        item.setPos(QPointF(50, 50))
+        editor.scene.createItemHandles(item)
+        editor.show()
+        QApplication.processEvents()
+
+        br = item.visualRect().bottomRight()  # (150, 100)
+        wp = editor.mapFromScene(br)
+        self._send(editor, QEvent.MouseButtonPress, wp,
+                   Qt.LeftButton, Qt.LeftButton)
+        assert editor.scene.item_resize_handle == "bottomRight"
+
+        target = wp + QPoint(40, 40)
+        self._send(editor, QEvent.MouseMove, target,
+                   Qt.NoButton, Qt.LeftButton)
+        rect = item.visualRect()
+        # размер изменился, пропорция 2:1 сохранена, якорь неподвижен
+        assert rect.width() > 100
+        assert rect.height() / rect.width() == pytest.approx(0.5, abs=0.01)
+        assert rect.topLeft().x() == pytest.approx(50, abs=1)
+        assert rect.topLeft().y() == pytest.approx(50, abs=1)
+        # рукопрокрутка не запускалась
+        assert editor.horizontalScrollBar().value() == 0
+        assert editor.verticalScrollBar().value() == 0
+
+        self._send(editor, QEvent.MouseButtonRelease, target,
+                   Qt.LeftButton, Qt.LeftButton)
+        assert editor.scene.item_resize_handle is None
 
 
 class TestPasteUndoTransform:
