@@ -67,9 +67,9 @@ All commands live in [`commands.py`](../commands.py) and derive from the [`Comma
 | [`TransformCommand`](../commands.py) | Rotate/Flip menu items, Rotation dialog (OK) | `QTransform` rotation (smooth) or `mirrored()` flip | Pre-transform image |
 | [`GrayscaleCommand`](../commands.py) | Image → Grayscale | OpenCV `RGBA2GRAY` → `GRAY2RGBA` | Color image |
 | [`CutCommand`](../commands.py) | Edit → Cut (Ctrl+X) | Copies selection to clipboard, fills it with `fill_color` (white by default), clears selection UI | Original image (selection is not re-created) |
-| [`PasteCommand`](../commands.py) | Edit → Paste (Ctrl+V) | Into selection: paints clipboard image. No selection: adds a floating [`MovableImageItem`](../scene.py) | Selection case: original image. Floating case: removes the item and restores prior floating items + image |
+| [`PasteCommand`](../commands.py) | Edit → Paste (Ctrl+V) | Into selection: paints clipboard image. No selection: adds a floating [`MovableImageItem`](../scene.py) | Selection case: original image. Floating case: removes the item and restores prior floating items (with their scale transforms) + image |
 | [`ResizeCommand`](../commands.py) | Image → Resize… (OK) | Scales the current image (`QImage.scaled`, smooth, aspect mode from `keep_aspect`) and applies it via `_apply()` — `setImage(keep_view=True)` + refit | Swaps back `old_image` and refits the view |
-| [`FixPasteCommand`](../commands.py) | Clicking empty canvas / saving with floating items | Bakes every floating item into `current_image` with a `QPainter` and removes the items from the scene | Restores old image and re-adds the floating items at their recorded positions |
+| [`FixPasteCommand`](../commands.py) | Clicking empty canvas / saving with floating items | Bakes every floating item into `current_image` at its scaled visual rect (resized items bake at their on-screen size) and removes the items from the scene | Restores old image and re-adds the floating items at their recorded positions with their transforms |
 
 ## 4. Interaction with Live Preview
 

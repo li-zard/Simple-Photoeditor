@@ -155,6 +155,8 @@ class PasteCommand(Command):
         self.movable_item = None
         self.selection_rect = editor.scene.selection_rect.rect().toRect() if editor.scene.selection_rect and editor.scene.selection_rect.rect().isValid() else None
         self.pasted_items_before = editor.pasted_items.copy()
+        # Трансформации предыдущих плавающих элементов — для корректного undo
+        self.transforms_before = [QTransform(i.transform()) for i in editor.pasted_items]
 
     def execute(self):
         """Paste the clipboard image either into a selection or as a movable item."""
@@ -186,7 +188,7 @@ class PasteCommand(Command):
         self.execute()
 
     def undo(self):
-        """Undo the paste operation."""
+        """Undo the paste operation (restores items with their transforms)."""
         if self.selection_rect and not self.selection_rect.isEmpty():
             self.editor.setImage(self.original_image, keep_view=True)
         else:
@@ -194,9 +196,10 @@ class PasteCommand(Command):
                 self.editor.scene.removeItem(self.movable_item)
                 self.editor.pasted_items.remove(self.movable_item)
             self.editor.pasted_items = self.pasted_items_before.copy()
-            for item in self.editor.pasted_items:
+            for item, tr in zip(self.editor.pasted_items, self.transforms_before):
                 if item not in self.editor.scene.items():
                     self.editor.scene.addItem(item)
+                item.setTransform(tr)
             self.editor.setImage(self.original_image, keep_view=True)
             self.editor.scene.update()
         self.editor.is_modified = bool(self.editor.undo_stack)
@@ -284,17 +287,20 @@ class FixPasteCommand(Command):
 
     Мутация выполняется в execute() (контракт этапа 3): раньше рисование
     выполнялось в ImageEditor.fixPastedItems() до создания команды.
+    Элементы запекаются с учётом их текущего масштаба (подход 1:
+    растянутый перед фиксацией элемент рисуется в целевой размер).
     """
 
     def __init__(self, editor, pasted_items):
         self.editor = editor
         self.pasted_items = list(pasted_items)
         self.positions = [item.pos() for item in pasted_items]
+        self.transforms = [QTransform(item.transform()) for item in pasted_items]
         self.old_image = None
         self.new_image = None
 
     def execute(self):
-        """Bake all floating pasted items onto the canvas."""
+        """Bake all floating pasted items onto the canvas (with scale)."""
         if not self.pasted_items:
             return
         if self.old_image is None:
@@ -304,11 +310,13 @@ class FixPasteCommand(Command):
         painter.setRenderHint(QPainter.Antialiasing)
         painter.setRenderHint(QPainter.SmoothPixmapTransform)
         for item in self.pasted_items:
-            pos = item.pos()
-            painter.drawPixmap(int(pos.x()), int(pos.y()), item.pixmap())
+            target = item.visualRect().toRect()
+            painter.drawPixmap(target, item.pixmap())
             if item.scene():
                 self.editor.scene.removeItem(item)
         painter.end()
+        if self.editor.scene.handles_item in self.pasted_items:
+            self.editor.scene.clearItemHandles()
         self.new_image = image
         self.editor.setImage(image, keep_view=True)
         self.editor.pasted_items.clear()
@@ -316,12 +324,13 @@ class FixPasteCommand(Command):
         self.editor.viewport().update()
 
     def undo(self):
-        """Undo the fixation of pasted items."""
+        """Undo the fixation of pasted items (restores pos + scale)."""
         self.editor.setImage(self.old_image, keep_view=True)
         self.editor.pasted_items.clear()
-        for item, pos in zip(self.pasted_items, self.positions):
+        for item, pos, tr in zip(self.pasted_items, self.positions, self.transforms):
             self.editor.scene.addItem(item)
             item.setPos(pos)
+            item.setTransform(tr)
             item.setFlag(QGraphicsItem.ItemIsMovable, True)
             item.setFlag(QGraphicsItem.ItemIsSelectable, True)
             self.editor.pasted_items.append(item)

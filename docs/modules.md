@@ -233,6 +233,8 @@ Custom scene providing selection and item interaction on top of the displayed im
 | `selection_rect` | `QGraphicsRectItem` for the current selection |
 | `selecting` / `start_pos` | Rubber-band drag state |
 | `handles` / `active_handle` | Eight resize handles + the one being dragged |
+| `item_handles` / `handles_item` | Eight resize handles around the selected floating pasted item + that item |
+| `item_resize_handle` / `item_resize_anchor` / `item_resize_start_rect` | Floating-item resize drag state: handle type being dragged, fixed opposite corner/edge point, rect at drag start |
 | `moving_selection` / `move_offset` | Whole-selection drag state: active flag + grab-point offset (Roadmap stage 5) |
 | `dash_offset` / `dash_timer` | Animated "marching ants" dash offset (100 ms timer) |
 
@@ -245,19 +247,27 @@ Custom scene providing selection and item interaction on top of the displayed im
 - [`updateDash()`](../scene.py) — advances the dash offset for the selection pen animation.
 - [`createHandles()`](../scene.py) — (re)creates 8 red square handles (corners + edge midpoints) sized adaptively from the image size (`max(12, min(30, img_size // 150))`), each flagged movable with a `handle_type` stored in item data and `ZValue` 200.
 - [`updatePenWidth()`](../scene.py) — scales the dashed pen width with image size (`max(2, min(5, img_size // 1000))`).
-- [`fixMovableItem(item, editor)`](../scene.py) — draws a floating item's pixmap onto `editor.current_image` at its position, calls [`editor.setImage()`](../editor.py), marks modified.
+- [`fixMovableItem(item, editor)`](../scene.py) — bakes a floating item onto `editor.current_image` at its **scaled** visual rect ([`visualRect()`](../scene.py) → `QPainter.drawPixmap(target, pixmap)` with smooth transform), calls [`editor.setImage()`](../editor.py), marks modified.
 - [`moveSelectionTo(scene_pos)`](../scene.py) — moves the whole selection rectangle keeping the grab point under the cursor; the top-left is clamped so the rectangle stays inside the scene; handles are recreated and `selectionChanged` re-emitted (Roadmap stage 5).
-- [`mousePressEvent()`](../scene.py) — if a handle was clicked, marks it active; if the press falls inside an existing selection (and not on a floating item), starts a whole-selection drag (`moving_selection`); otherwise fixes any selected floating items, clears the previous selection and handles, and starts a new rubber-band selection.
-- [`mouseMoveEvent()`](../scene.py) — drags the active handle (clamped to the scene rect, rect re-normalized), moves the whole selection, or extends the rubber band; emits `selectionChanged`.
-- [`mouseReleaseEvent()`](../scene.py) — finalizes the selection by (re)creating handles; ends a whole-selection drag.
+- [`createItemHandles(item)`](../scene.py) — (re)creates 8 blue resize handles (corners + edge midpoints, `ZValue` 300, directional cursors) around the floating item's `visualRect()`; handle size adapts to the image like selection handles.
+- [`clearItemHandles()`](../scene.py) — removes the item resize handles and resets `handles_item` / `item_resize_handle`.
+- [`updateItemHandles()`](../scene.py) — rebuilds the handles after the tracked item was moved.
+- [`beginItemResize(scene_pos)`](../scene.py) — records the start rect and computes the fixed anchor (opposite corner for corner handles, opposite edge midpoint for edge handles).
+- [`updateItemResize(scene_pos, free_aspect)`](../scene.py) — resizes the item towards the cursor keeping the anchor fixed: aspect ratio is locked by default (`scale = max(w/base_w, h/base_h)` for corners), **Shift** enables free resize; edge handles keep the opposite edge centered. Size is clamped to `MIN_SIZE` (8 px) and 4× the scene. Applies `setPos()` + `setTransform(scale)` and shows the live size in the status bar.
+- [`mousePressEvent()`](../scene.py) — if a selection handle was clicked, marks it active; if an **item** handle was clicked, starts an item resize; if the press falls inside an existing selection (and not on a floating item), starts a whole-selection drag (`moving_selection`); otherwise clears item handles, fixes any selected floating items, clears the previous selection and handles, and starts a new rubber-band selection.
+- [`mouseMoveEvent()`](../scene.py) — resizes the tracked floating item (Shift = free aspect), drags the active handle (clamped to the scene rect, rect re-normalized), moves the whole selection, or extends the rubber band; emits `selectionChanged`.
+- [`mouseReleaseEvent()`](../scene.py) — finalizes the selection by (re)creating handles; ends a whole-selection drag; ends an item resize.
 
 ### `MovableImageItem(QGraphicsPixmapItem)`
 
 A floating pasted image:
 
 - Smooth transformation, movable + selectable flags, `SizeAllCursor`, `ZValue` 100 (above the base image, below handles).
-- [`mouseMoveEvent()`](../scene.py) — constrains the item inside the scene rect.
-- [`mousePressEvent()`](../scene.py) / [`mouseReleaseEvent()`](../scene.py) — keep the item selected on left-click.
+- `MIN_SIZE = 8` — minimum visual size in pixels enforced while resizing.
+- [`visualRect()`](../scene.py) — the item's rect in scene coordinates **including its scale transform** (`mapRectToScene` of the exact pixmap rect; `boundingRect()` is not used because `QGraphicsPixmapItem` adds a half-pixel border).
+- [`baseSize()`](../scene.py) — the unscaled pixmap size, used as the reference for aspect-locked resizing.
+- [`mouseMoveEvent()`](../scene.py) — relaxed clamping: the item may extend beyond the canvas edges, but at least 10% of it must remain inside so it stays grabbable; the resize handles follow the item.
+- [`mousePressEvent()`](../scene.py) / [`mouseReleaseEvent()`](../scene.py) — keep the item selected on left-click; press also shows the item's 8 resize handles via [`createItemHandles()`](../scene.py).
 
 ---
 
@@ -277,10 +287,10 @@ Interface with no-op [`execute()`](../commands.py), [`undo()`](../commands.py); 
 | [`AdjustmentsCommand(editor, brightness, contrast, gamma, autobalance, original_image_override)`](../commands.py) | Snapshot (or override) | Autobalance (NumPy per-channel histogram stretch, 5% clip threshold) → PIL brightness/contrast → true gamma via NumPy LUT `((px/255) ** (1/gamma)) * 255` → `setImage(keep_view=True)` | Restore snapshot / re-execute |
 | [`TransformCommand(editor, degrees=None, horizontal_flip=None, original_image_override)`](../commands.py) | Snapshot (or override) | `QTransform().rotate(degrees)` with `SmoothTransformation`, or `mirrored(horizontal, not horizontal)` | Restore snapshot / re-execute |
 | [`GrayscaleCommand(editor)`](../commands.py) | Snapshot | Converts to `RGBA8888`, `cv2.cvtColor(RGBA2GRAY)` then back to RGBA; warns if cv2 missing | Restore snapshot / re-execute |
-| [`PasteCommand(editor, clipboard_image)`](../commands.py) | Snapshot, selection rect, prior pasted items | With selection: paints the clipboard image at the selection's top-left. Without: creates a [`MovableImageItem`](../scene.py) at (10, 10), fixes any currently selected floating items first, selects the new item | Selection case: restore snapshot. Floating case: remove item, restore prior items and snapshot |
+| [`PasteCommand(editor, clipboard_image)`](../commands.py) | Snapshot, selection rect, prior pasted items (positions **and transforms**) | With selection: paints the clipboard image at the selection's top-left. Without: creates a [`MovableImageItem`](../scene.py) at (10, 10), fixes any currently selected floating items first, selects the new item | Selection case: restore snapshot. Floating case: remove item, restore prior items (with their scale transforms) and snapshot |
 | [`CutCommand(editor, fill_color=None)`](../commands.py) | Snapshot, selection rect | Copies the region to the clipboard, fills it with `fill_color` (white by default), removes selection + handles | Restore snapshot |
 | [`ResizeCommand(editor, new_width, new_height, keep_aspect=True)`](../commands.py) | Target size; `old_image` is snapshotted lazily on first `execute()` | Scales the current image via `QImage.scaled` (smooth; `KeepAspectRatio`/`IgnoreAspectRatio` from `keep_aspect`) and applies it through `_apply()` ([`setImage()`](../editor.py) + `fitInViewWithRulers`) | `undo()` re-applies `old_image`; `redo()` re-applies `new_image` — both refit the view |
-| [`FixPasteCommand(editor, pasted_items)`](../commands.py) | The floating items and their positions; `old_image` is snapshotted lazily on first `execute()` | Bakes every item's pixmap into `current_image` with a `QPainter`, removes the items from the scene and from `editor.pasted_items` | `undo()` restores the old image and re-adds the items at their recorded positions; `redo()` re-runs `execute()` |
+| [`FixPasteCommand(editor, pasted_items)`](../commands.py) | The floating items, their positions **and transforms**; `old_image` is snapshotted lazily on first `execute()` | Bakes every item's pixmap into `current_image` at its scaled `visualRect()` (so resized items bake at their on-screen size), removes the items from the scene and from `editor.pasted_items` | `undo()` restores the old image and re-adds the items at their recorded positions **with their transforms**; `redo()` re-runs `execute()` |
 
 Design notes:
 

@@ -2,6 +2,15 @@ from PyQt5.QtWidgets import QGraphicsScene, QGraphicsRectItem, QGraphicsPixmapIt
 from PyQt5.QtGui import QColor, QPen, QCursor, QTransform, QPainter
 from PyQt5.QtCore import Qt, QRectF, QSizeF, QPointF, QTimer, pyqtSignal
 
+# Типы и курсоры якорей ресайза вставленных элементов (подход 1:
+# растягивание вставленного изображения перед фиксацией на холсте).
+ITEM_HANDLE_CURSORS = {
+    "topLeft": Qt.SizeFDiagCursor, "bottomRight": Qt.SizeFDiagCursor,
+    "topRight": Qt.SizeBDiagCursor, "bottomLeft": Qt.SizeBDiagCursor,
+    "left": Qt.SizeHorCursor, "right": Qt.SizeHorCursor,
+    "top": Qt.SizeVerCursor, "bottom": Qt.SizeVerCursor,
+}
+
 class ImageEditorScene(QGraphicsScene):
     selectionChanged = pyqtSignal(QRectF)
 
@@ -19,6 +28,13 @@ class ImageEditorScene(QGraphicsScene):
         # за внутреннюю область, а не только за 8 маркеров.
         self.moving_selection = False
         self.move_offset = QPointF(0, 0)
+        # Ресайз вставленных элементов (подход 1): якоря вокруг
+        # MovableImageItem и состояние перетаскивания за якорь.
+        self.item_handles = []
+        self.handles_item = None
+        self.item_resize_handle = None
+        self.item_resize_anchor = None
+        self.item_resize_start_rect = QRectF()
         self.dash_offset = 0
         self.dash_timer = QTimer(self)
         self.dash_timer.timeout.connect(self.updateDash)
@@ -102,16 +118,158 @@ class ImageEditorScene(QGraphicsScene):
         self.selectionChanged.emit(rect)
 
     def fixMovableItem(self, item, editor):
-        """Fix a movable item onto the image."""
+        """Fix a movable item onto the image (с учётом масштаба элемента)."""
         if not isinstance(item, MovableImageItem) or not editor.current_image:
             return
-        pixmap = item.pixmap()
-        pos = item.pos()
+        target = item.visualRect().toRect()
         painter = QPainter(editor.current_image)
-        painter.drawPixmap(int(pos.x()), int(pos.y()), pixmap)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform)
+        painter.drawPixmap(target, item.pixmap())
         painter.end()
+        if self.handles_item is item:
+            self.clearItemHandles()
         editor.setImage(editor.current_image, keep_view=True)
         editor.is_modified = True
+
+    # --- Якоря ресайза вставленных элементов (подход 1) ---
+
+    def createItemHandles(self, item):
+        """Создать 8 якорей ресайза вокруг вставленного элемента."""
+        if item is None or item.scene() is not self:
+            return
+        self.clearItemHandles()
+        self.handles_item = item
+        editor = self.views()[0]
+        img_size = max(editor.current_image.width(), editor.current_image.height()) if editor.current_image else 1000
+        handle_size = max(12, min(30, img_size // 150))
+
+        rect = item.visualRect()
+        positions = [
+            (rect.topLeft(), "topLeft"), (rect.topRight(), "topRight"),
+            (rect.bottomLeft(), "bottomLeft"), (rect.bottomRight(), "bottomRight"),
+            (QPointF(rect.center().x(), rect.top()), "top"),
+            (QPointF(rect.center().x(), rect.bottom()), "bottom"),
+            (QPointF(rect.left(), rect.center().y()), "left"),
+            (QPointF(rect.right(), rect.center().y()), "right"),
+        ]
+
+        for pos, handle_type in positions:
+            handle = QGraphicsRectItem(QRectF(pos.x() - handle_size / 2, pos.y() - handle_size / 2,
+                                               handle_size, handle_size))
+            handle.setBrush(QColor(0, 120, 215))
+            handle.setPen(QPen(Qt.white, 1))
+            handle.setFlag(QGraphicsRectItem.ItemIsMovable, False)
+            handle.setZValue(300)
+            handle.setCursor(ITEM_HANDLE_CURSORS[handle_type])
+            handle.setData(0, handle_type)
+            self.addItem(handle)
+            self.item_handles.append(handle)
+        self.update()
+
+    def clearItemHandles(self):
+        """Убрать якоря ресайза вставленного элемента."""
+        for handle in self.item_handles:
+            if handle.scene():
+                self.removeItem(handle)
+        self.item_handles = []
+        self.handles_item = None
+        self.item_resize_handle = None
+
+    def updateItemHandles(self):
+        """Перестроить якоря под текущее положение/размер элемента."""
+        if self.handles_item is not None and self.item_handles:
+            self.createItemHandles(self.handles_item)
+
+    def beginItemResize(self, scene_pos):
+        """Начать ресайз за якорь: запомнить стартовый rect и якорную точку."""
+        item = self.handles_item
+        if item is None:
+            return
+        rect = item.visualRect()
+        self.item_resize_start_rect = rect
+        ht = self.item_resize_handle
+        anchor = QPointF(rect.left(), rect.top())
+        if ht == "topLeft":
+            anchor = rect.bottomRight()
+        elif ht == "topRight":
+            anchor = rect.bottomLeft()
+        elif ht == "bottomLeft":
+            anchor = rect.topRight()
+        elif ht == "bottomRight":
+            anchor = rect.topLeft()
+        elif ht == "top":
+            anchor = QPointF(rect.center().x(), rect.bottom())
+        elif ht == "bottom":
+            anchor = QPointF(rect.center().x(), rect.top())
+        elif ht == "left":
+            anchor = QPointF(rect.right(), rect.center().y())
+        elif ht == "right":
+            anchor = QPointF(rect.left(), rect.center().y())
+        self.item_resize_anchor = anchor
+
+    def updateItemResize(self, scene_pos, free_aspect):
+        """Изменить размер элемента по позиции курсора.
+
+        Пропорции сохраняются по умолчанию; free_aspect=True (Shift) —
+        свободный ресайз. Противоположный угол/сторона неподвижны.
+        """
+        item = self.handles_item
+        if item is None or self.item_resize_handle is None:
+            return
+        editor = self.views()[0]
+        base = item.baseSize()
+        if base.width() <= 0 or base.height() <= 0:
+            return
+        aspect = base.height() / base.width()
+        start = self.item_resize_start_rect
+        anchor = self.item_resize_anchor
+        ht = self.item_resize_handle
+        min_size = MovableImageItem.MIN_SIZE
+        max_w = self.sceneRect().width() * 4
+        max_h = self.sceneRect().height() * 4
+
+        corner = ht in ("topLeft", "topRight", "bottomLeft", "bottomRight")
+        if corner:
+            new_w = abs(scene_pos.x() - anchor.x())
+            new_h = abs(scene_pos.y() - anchor.y())
+            if not free_aspect:
+                s = max(new_w / base.width(), new_h / base.height())
+                new_w, new_h = base.width() * s, base.height() * s
+        elif ht in ("left", "right"):
+            new_w = abs(scene_pos.x() - anchor.x())
+            new_h = start.height() if free_aspect else new_w * aspect
+        else:  # top / bottom
+            new_h = abs(scene_pos.y() - anchor.y())
+            new_w = start.width() if free_aspect else new_h / aspect
+
+        # Ограничения размера
+        new_w = max(min_size, min(new_w, max_w))
+        new_h = max(min_size, min(new_h, max_h))
+        if not free_aspect:
+            if new_w / base.width() > new_h / base.height():
+                new_w = new_h / aspect
+            else:
+                new_h = new_w * aspect
+
+        # Итоговый rect: якорь неподвижен, расширение в сторону курсора
+        if corner:
+            dx = 1.0 if scene_pos.x() >= anchor.x() else -1.0
+            dy = 1.0 if scene_pos.y() >= anchor.y() else -1.0
+            rect = QRectF(anchor.x(), anchor.y(), dx * new_w, dy * new_h).normalized()
+        elif ht == "left":
+            rect = QRectF(start.right() - new_w, start.center().y() - new_h / 2, new_w, new_h)
+        elif ht == "right":
+            rect = QRectF(start.left(), start.center().y() - new_h / 2, new_w, new_h)
+        elif ht == "top":
+            rect = QRectF(start.center().x() - new_w / 2, start.bottom() - new_h, new_w, new_h)
+        else:  # bottom
+            rect = QRectF(start.center().x() - new_w / 2, start.top(), new_w, new_h)
+
+        item.setPos(rect.topLeft())
+        item.setTransform(QTransform().scale(new_w / base.width(), new_h / base.height()))
+        self.createItemHandles(item)
+        editor.window().statusBar().showMessage(
+            f"Pasted image: {int(new_w)}×{int(new_h)} px", 2000)
 
     def mousePressEvent(self, event):
         """Handle mouse press events for selection."""
@@ -119,6 +277,10 @@ class ImageEditorScene(QGraphicsScene):
             item = self.itemAt(event.scenePos(), QTransform())
             if item in self.handles:
                 self.active_handle = item
+                return
+            if item in self.item_handles:
+                self.item_resize_handle = item.data(0)
+                self.beginItemResize(event.scenePos())
                 return
 
             editor = self.views()[0]
@@ -135,6 +297,7 @@ class ImageEditorScene(QGraphicsScene):
                 return
 
             if not isinstance(item, MovableImageItem):
+                self.clearItemHandles()
                 for selected_item in self.selectedItems():
                     if isinstance(selected_item, MovableImageItem):
                         self.fixMovableItem(selected_item, editor)
@@ -159,6 +322,10 @@ class ImageEditorScene(QGraphicsScene):
     def mouseMoveEvent(self, event):
         """Handle mouse move events for resizing or creating selections."""
         scene_rect = self.sceneRect()
+        if self.item_resize_handle:
+            self.updateItemResize(event.scenePos(),
+                                  event.modifiers() & Qt.ShiftModifier)
+            return
         if self.active_handle:
             new_pos = event.scenePos()
             handle_type = self.active_handle.data(0)
@@ -213,6 +380,9 @@ class ImageEditorScene(QGraphicsScene):
 
     def mouseReleaseEvent(self, event):
         """Handle mouse release events to finalize selections."""
+        if self.item_resize_handle:
+            self.item_resize_handle = None
+            return
         if self.selecting and self.current_tool == "selection":
             self.selecting = False
             self.createHandles()
@@ -223,6 +393,9 @@ class ImageEditorScene(QGraphicsScene):
         super().mouseReleaseEvent(event)
 
 class MovableImageItem(QGraphicsPixmapItem):
+    # Минимальный размер визуального прямоугольника (px)
+    MIN_SIZE = 8
+
     def __init__(self, pixmap, parent=None):
         """Initialize a movable image item."""
         super().__init__(pixmap, parent)
@@ -232,20 +405,45 @@ class MovableImageItem(QGraphicsPixmapItem):
         self.setCursor(Qt.SizeAllCursor)
         self.setZValue(100)
 
+    def visualRect(self):
+        """Визуальный прямоугольник в координатах сцены (с учётом масштаба).
+
+        boundingRect() QGraphicsPixmapItem добавляет полупиксельную рамку
+        вокруг pixmap, поэтому используем точный размер pixmap.
+        """
+        pm = self.pixmap()
+        return self.mapRectToScene(QRectF(0, 0, pm.width(), pm.height()))
+
+    def baseSize(self):
+        """Исходный размер pixmap (без масштабирования)."""
+        pm = self.pixmap()
+        return QSizeF(pm.width(), pm.height())
+
     def mouseMoveEvent(self, event):
-        """Handle movement of the item, constraining it within the scene."""
+        """Перетаскивание: элемент может выходить за края холста,
+        но не менее 10% должно оставаться внутри, чтобы его можно было захватить."""
         super().mouseMoveEvent(event)
         scene_rect = self.scene().sceneRect()
+        vis = self.visualRect()
         new_pos = self.pos()
-        item_rect = self.boundingRect()
-        new_pos.setX(max(scene_rect.left(), min(new_pos.x(), scene_rect.right() - item_rect.width())))
-        new_pos.setY(max(scene_rect.top(), min(new_pos.y(), scene_rect.bottom() - item_rect.height())))
+        min_x = scene_rect.left() - vis.width() * 0.9
+        max_x = scene_rect.right() - vis.width() * 0.1
+        min_y = scene_rect.top() - vis.height() * 0.9
+        max_y = scene_rect.bottom() - vis.height() * 0.1
+        new_pos.setX(max(min_x, min(new_pos.x(), max_x)))
+        new_pos.setY(max(min_y, min(new_pos.y(), max_y)))
         self.setPos(new_pos)
+        scene = self.scene()
+        if scene and scene.handles_item is self:
+            scene.updateItemHandles()
 
     def mousePressEvent(self, event):
-        """Select the item on left-click."""
+        """Select the item on left-click and show its resize handles."""
         if event.button() == Qt.LeftButton:
             self.setSelected(True)
+            scene = self.scene()
+            if scene:
+                scene.createItemHandles(self)
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
