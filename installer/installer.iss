@@ -1,10 +1,15 @@
 ; Inno Setup script for Simple Photo Editor (Roadmap stage 6).
 ; Compile with ISCC after PyInstaller has produced dist\SimplePhotoEditor\ :
 ;   ISCC installer\installer.iss
-; Artifact: installer\Output\SimplePhotoEditor_Setup_v1.0.exe
+; Artifact: installer\Output\SimplePhotoEditor_Setup_v{#AppVersion}.exe
+;
+; AppVersion default below is only a fallback for manual ISCC runs;
+; build_windows.bat passes the real version from version.py via /DAppVersion=...
 
+#ifndef AppVersion
+  #define AppVersion "1.0"
+#endif
 #define AppName "Simple Photo Editor"
-#define AppVersion "1.0"
 #define AppExeName "SimplePhotoEditor.exe"
 #define AppPublisher "Li_Zard"
 
@@ -17,7 +22,7 @@ DefaultDirName={autopf}\{#AppName}
 DefaultGroupName={#AppName}
 UninstallDisplayName={#AppName}
 UninstallDisplayIcon={app}\icon.ico
-OutputBaseFilename=SimplePhotoEditor_Setup_v1.0
+OutputBaseFilename=SimplePhotoEditor_Setup_v{#AppVersion}
 OutputDir=Output
 SetupIconFile=..\icons\icon.ico
 Compression=lzma2

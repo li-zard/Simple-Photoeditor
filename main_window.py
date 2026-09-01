@@ -11,6 +11,7 @@ from PyQt5.QtGui import QIcon, QKeySequence, QColor, QImage, QPixmap, QPainter, 
 from PyQt5.QtCore import Qt, QRectF, QTimer
 from PyQt5.QtPrintSupport import QPrinter, QPrintDialog
 from PIL import Image as PILImage, ImageOps
+from version import APP_VERSION, APP_NAME
 from editor import ImageEditor, EditorContainer
 from widgets import CustomMdiSubWindow, NewImageDialog, AdjustmentsDialog, ResizeDialog, RotationDialog
 from commands import CropCommand
@@ -31,7 +32,7 @@ except ImportError:
 class MainWindow(QMainWindow):
     def __init__(self, config):
         super().__init__()
-        self.setWindowTitle("Simple Photo Editor")
+        self.setWindowTitle(f"{APP_NAME} {APP_VERSION}")
         self.setGeometry(100, 100, 1000, 800)
 
         self.mdi_area = QMdiArea()
@@ -1025,7 +1026,8 @@ class MainWindow(QMainWindow):
 
     def about(self):
         """Show the about dialog"""
-        QMessageBox.about(self, "About Simple Photo Editor",
-            "Simple Photo Editor is a basic image editing application similar to "
+        QMessageBox.about(self, self.tr(f"About {APP_NAME}"),
+            f"{APP_NAME} v{APP_VERSION}\n\n"
+            "A basic image editing application similar to "
             "Microsoft Photo Editor. It was created as a cross-platform alternative "
-            "using Python and PyQt5. (c)Li_Zard")
+            "using Python and PyQt5.\n\n(c) Li_Zard")

@@ -90,10 +90,20 @@ The application loads resources at runtime via [`resource_path()`](../utils.py:1
 On Windows the whole chain is automated by [`build_windows.bat`](../build_windows.bat):
 
 1. PyInstaller builds `dist\SimplePhotoEditor\` (onedir, windowed, icon, bundled data).
-2. Inno Setup compiles [`installer/installer.iss`](../installer/installer.iss) via `ISCC.exe` (default location `%ProgramFiles(x86)%\Inno Setup 6\`, overridable through the `ISCC` environment variable).
-3. Artifact: `installer\Output\SimplePhotoEditor_Setup_v1.0.exe` — Start-menu shortcut and uninstaller, optional desktop icon, optional "Open with" file associations (HKCU + `OpenWithProgids`), full registry cleanup on uninstall.
+2. Inno Setup compiles [`installer/installer.iss`](../installer/installer.iss) via `ISCC.exe` (default location `%ProgramFiles(x86)%\Inno Setup 6\`, overridable through the `ISCC` environment variable), receiving the version as `/DAppVersion=...`.
+3. Artifact: `installer\Output\SimplePhotoEditor_Setup_v{#AppVersion}.exe` — Start-menu shortcut and uninstaller, optional desktop icon, optional "Open with" file associations (HKCU + `OpenWithProgids`), full registry cleanup on uninstall.
 
 Acceptance checks for the installed app: [roadmap § 6.5](roadmap.md).
+
+### Versioning
+
+[`version.py`](../version.py) is the single source of `APP_VERSION` (and `APP_NAME`). To release a new version, change that one line — everything else picks it up automatically:
+
+- the About dialog and the main-window title ([`MainWindow.about()`](../main_window.py)) import the constants directly;
+- [`build_windows.bat`](../build_windows.bat) parses `APP_VERSION` with `findstr` and passes it to ISCC as `/DAppVersion=...`;
+- [`installer/installer.iss`](../installer/installer.iss) accepts the define (its own `#define AppVersion` is only a fallback for manual ISCC runs) and uses it both for installer metadata and for the artifact name `SimplePhotoEditor_Setup_v{#AppVersion}.exe`.
+
+Keep the value semver-like (`1.0`, `1.2.3`): digits and dots only, no spaces or quotes — the bat parser and the artifact filename depend on this ([`tests/test_version.py`](../tests/test_version.py) enforces it).
 
 ## 4. First-Run Behavior in Packaged Builds
 
@@ -106,6 +116,7 @@ Acceptance checks for the installed app: [roadmap § 6.5](roadmap.md).
 ```
 Simple-Photoeditor/
 ├── main.py               # entry point
+├── version.py            # single source of APP_VERSION / APP_NAME
 ├── main_window.py        # MainWindow: menus, toolbars, MDI, file I/O
 ├── editor.py             # ImageEditor (QGraphicsView) + EditorContainer
 ├── scene.py              # ImageEditorScene + MovableImageItem

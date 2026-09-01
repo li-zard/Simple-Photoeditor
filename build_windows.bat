@@ -9,6 +9,8 @@ rem    - venv with requirements-dev.txt installed (PyQt5 + pyinstaller).
 rem      The script auto-uses .\venv (or the active VIRTUAL_ENV);
 rem      a pre-flight check aborts early if PyQt5 is missing.
 rem    - Inno Setup 6+ installed (ISCC.exe, or set ISCC env var)
+rem    - version.py is the single source of APP_VERSION: it lands in
+rem      the About dialog and, via /D, in the installer name/metadata.
 rem ============================================================
 setlocal
 
@@ -47,6 +49,16 @@ if errorlevel 1 (
     exit /b 1
 )
 
+rem --- Extract APP_VERSION from version.py (single source of truth) ---
+rem     delims "== " splits on '=' and spaces; %%~v strips the quotes.
+set "VERSION="
+for /f "tokens=2 delims== " %%v in ('findstr /b "APP_VERSION" version.py') do set "VERSION=%%~v"
+if not defined VERSION (
+    echo [ERROR] Cannot parse APP_VERSION from version.py
+    exit /b 1
+)
+echo === Building version: %VERSION% ===
+
 rem --- 1. Freeze the application (onedir) ---
 echo === PyInstaller (onedir) ===
 "%PY%" -m PyInstaller main.py --onedir --windowed --icon=icons\icon.ico ^
@@ -72,7 +84,7 @@ if not exist "installer\installer.iss" (
     echo         Check that the installer\ folder is synced/present, then retry.
     exit /b 1
 )
-"%ISCC%" installer\installer.iss
+"%ISCC%" /DAppVersion=%VERSION% installer\installer.iss
 if errorlevel 1 (
     echo [ERROR] ISCC failed. Run it manually for details:
     echo         "%ISCC%" installer\installer.iss
@@ -80,5 +92,5 @@ if errorlevel 1 (
 )
 
 echo.
-echo Done: installer\Output\SimplePhotoEditor_Setup_v1.0.exe
+echo Done: installer\Output\SimplePhotoEditor_Setup_v%VERSION%.exe
 endlocal
