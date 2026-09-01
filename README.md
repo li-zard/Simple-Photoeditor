@@ -51,6 +51,21 @@ Simple Photoeditor is an open-source Python-based multi platform image editing t
    python main.py
    ```
 
+> **Linux note — Qt version conflict.** On systems with a system-wide Qt 5 installed
+> (e.g. Arch with `qt5-base`), the app may abort with
+> `Cannot mix incompatible Qt library (5.15.x) with this library (5.15.y)`.
+> Fix: quarantine the conflicting plugin shipped inside the PyQt5 wheel (PDF image
+> loading is not used by this app):
+>
+> ```bash
+> mkdir -p venv/_disabled_plugins
+> mv venv/lib/python3.*/site-packages/PyQt5/Qt5/plugins/imageformats/libqpdf.so \
+>    venv/_disabled_plugins/
+> ```
+>
+> Re-apply after reinstalling `PyQt5-Qt5` or rebuilding the venv. Details and an
+> alternative (distro PyQt5 package) in [docs/building.md](docs/building.md).
+
 ## Key Dependencies
 
 - **OpenCV-Python-Headless** (`opencv-python-headless==4.11.0.86`): For image processing and manipulation.

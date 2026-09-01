@@ -52,4 +52,15 @@ pip install -r requirements.txt
 python main.py [optional_image_path]
 ```
 
+> **Linux + system Qt:** if the app aborts with `Cannot mix incompatible Qt
+> library (5.15.x) with this library (5.15.y)`, quarantine the wheel's PDF plugin:
+>
+> ```bash
+> mkdir -p venv/_disabled_plugins
+> mv venv/lib/python3.*/site-packages/PyQt5/Qt5/plugins/imageformats/libqpdf.so \
+>    venv/_disabled_plugins/
+> ```
+>
+> See [Building & Deployment](building.md) for details.
+
 See [Building & Deployment](building.md) for executable packaging details.
