@@ -16,6 +16,9 @@ setlocal
 
 rem --- Locate Inno Setup compiler (override by setting ISCC env var) ---
 if "%ISCC%"=="" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+rem if "%ISCC%"=="" set "C:\Users\li\AppData\Local\Programs\Inno Setup 6\ISCC.exe"
+rem if "%ISCC%"=="" set "ISCC=C:\Users\li\AppData\Local\Programs\Inno Setup 6\ISCC.exe"
+
 if not exist "%ISCC%" (
     echo [ERROR] Inno Setup compiler not found: "%ISCC%"
     echo         Install Inno Setup 6+ or set the ISCC environment variable.
